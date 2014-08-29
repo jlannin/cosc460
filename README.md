@@ -1,1 +1,1 @@
-#Public repository for COSC460
+This repo holds my cosc460 work.
