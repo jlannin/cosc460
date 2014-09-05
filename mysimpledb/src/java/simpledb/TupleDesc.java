@@ -48,12 +48,16 @@ public class TupleDesc implements Serializable {
      *                be null.
      */
     public TupleDesc(Type[] typeAr, String[] fieldAr) {
+    	if (typeAr == null)
+    	{
+    		throw new RuntimeException();
+    	}
     	tupdes = new TDItem[typeAr.length];
         for(int i = 0; i < typeAr.length; i++)
         {
-        	if(i < fieldAr.length)
+        	if (fieldAr != null && i < fieldAr.length)
         	{
-        		tupdes[i] = new TDItem(typeAr[i], fieldAr[i]);
+	        		tupdes[i] = new TDItem(typeAr[i], fieldAr[i]);
         	}
         	else
         	{
