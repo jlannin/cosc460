@@ -26,6 +26,10 @@ public class HeapFile implements DbFile {
      *          file.
      */
     public HeapFile(File f, TupleDesc td) {
+    	if (f == null || td == null)
+    	{
+    		throw new RuntimeException();
+    	}
         file = f;
         tupdes = td;
         tableid = f.getAbsoluteFile().hashCode();
@@ -65,7 +69,10 @@ public class HeapFile implements DbFile {
     // see DbFile.java for javadocs
     public Page readPage(PageId pid) {
         //calculate page size
-
+    	if (pid == null)
+    	{
+    		throw new RuntimeException();
+    	}
     	int pagesize = BufferPool.getPageSize();
     	InputStream input = null;
     	try {
@@ -80,6 +87,7 @@ public class HeapFile implements DbFile {
     	}
     	catch (FileNotFoundException x) {
     		System.err.print("File Not Found");
+    		return null;
     	} 
     	catch (IOException y) {
     		System.err.print("Error reading data");
@@ -114,6 +122,7 @@ public class HeapFile implements DbFile {
     	}
     	catch (FileNotFoundException x) {
     		System.err.print("File Not Found");
+    		return -1;
     	} 
     	catch (IOException y) {
     		System.err.print("Error reading data");
@@ -169,10 +178,14 @@ public class HeapFile implements DbFile {
 			//need to check if this is in the table?
 			if (!open)
 			{
-				HeapPageId currentid = new HeapPageId(tableid, index);
+				HeapPageId currentid = new HeapPageId(tableid, 0);
 				currpage = (HeapPage) Database.getBufferPool().getPage(transid, currentid, null);
 				iterup = currpage.iterator();
 				open = true;
+			}
+			else
+			{
+				System.err.println("Iterator already open!");
 			}
 		}
 
@@ -248,6 +261,8 @@ public class HeapFile implements DbFile {
 	    {
 	    	index = 0;
 	    	nextfound = false;
+	    	open = false;
+	    	open();
 		
 	    }
 

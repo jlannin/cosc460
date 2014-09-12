@@ -180,6 +180,10 @@ public class TupleDesc implements Serializable {
      * @return the new TupleDesc
      */
     public static TupleDesc merge(TupleDesc td1, TupleDesc td2) {
+    	if (td1 == null || td2 == null)
+    	{
+    		throw new RuntimeException("One or both of the TupleDescs is null!");
+    	}
     	int fields = td1.numFields() + td2.numFields();
     	Type[] ty = new Type [fields];
     	String [] names = new String[fields];
@@ -207,7 +211,7 @@ public class TupleDesc implements Serializable {
      * @return true if the object is equal to this TupleDesc.
      */
     public boolean equals(Object o) {
-        if (!(o instanceof TupleDesc))
+        if (o == null || !(o instanceof TupleDesc))
         {
         	return false;
         }

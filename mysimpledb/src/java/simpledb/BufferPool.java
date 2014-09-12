@@ -39,7 +39,11 @@ public class BufferPool {
      * @param numPages maximum number of pages in this buffer pool.
      */
     public BufferPool(int numPages) {
-        numpages = numPages;
+        if (numPages < 0)
+        {
+        	throw new RuntimeException();
+        }
+    	numpages = numPages;
         pagespresent = 0;
         idtopage = new ConcurrentHashMap<PageId, Page>();
     }
