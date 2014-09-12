@@ -9,17 +9,29 @@ Justin Lannin
 
 2. What did you think of this assignment?
 
-<Replace this text with your answer>
+I really enjoyed this assignment.  It was a very interesting way
+to learn more about database structure as well as to gain experience
+working with large Java projects. I also thought that it was a fun level of
+challenging.
+
 
 3. What was the hardest part of this assignment?
 
-<Replace this text with your answer>
+I thought that the hardest part of this assignment was orienting myself
+to all of the different java files and trying to figure out how they fit
+together. Once I understood what all of the different pieces were (and
+what functionalities/methods/variables they had), the assignment became
+a lot more manageable.
 
 4. Describe any missing or incomplete elements of your code.
 
-<Replace this text with your answer>
+I think that my code should hopefully be pretty complete.  It
+passes all of the unit tests as well as the given test (and others that
+I ran) in Exercise 7. 
 
 5. Roughly how long did you spend working on this lab?
 
-<Replace this text with your answer>
+I spent both lab sessions as well as a couple of hours before the 
+Milestone and a couple of hours before the final project was due 
+working on this lab.
 
