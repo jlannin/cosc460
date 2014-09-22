@@ -247,7 +247,19 @@ public class HeapPage implements Page {
 	 *                     already empty.
 	 */
 	public void deleteTuple(Tuple t) throws DbException {
+		if(numSlots == getNumEmptySlots())
+		{
+			throw new DbException("No Tuples on page!");
+		}
+		if (t == null)
+		{
+			throw new DbException("Tuple was null!");
+		}
 		RecordId rid = t.getRecordId();
+		if (rid == null)
+		{
+			throw new DbException("Tuple already deleted!");
+		}
 		int tuplenum = rid.tupleno();
 		PageId tpid = rid.getPageId();
 		if(!tpid.equals(pid))
@@ -272,6 +284,10 @@ public class HeapPage implements Page {
 	 *                     is mismatch.
 	 */
 	public void insertTuple(Tuple t) throws DbException {
+		if (t == null)
+		{
+			throw new DbException("Tuple was null!");
+		}
 		if (!t.getTupleDesc().equals(td))
 		{
 			throw new DbException("Tuple Description of page doesn't match that of new tuple to insert!");
