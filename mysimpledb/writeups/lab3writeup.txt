@@ -3,13 +3,85 @@ Report for Lab 3
 
 Answer the questions from the lab description here.  Questions 8 and 9 do not require answers.
 
-1.
-2.
-3.
-4.
+1.  The following classes implement the Interface DbIterator:  Aggregate, Delete, Filter, HashEquiJoin,
+Insert, Join, Operator, OrderBy, Project, SeqScan, and TupleIterator.
+
+2.  The subclasses of the Operator class are:  Aggregate, Delete, Filter, HashEquiJoin, Insert,
+Join, OrderBy, and Project.
+
+3.  The following relational algebra operations are supported as subclasses of Operator:
+
+ Select (Filter)
+ Project (Project)
+ Join (Join)
+ 
+4. "hasNext()" and "next()" are implemented already in the Operator class which Filter extends
+(In fact the Operator class is the one that directly implements DbIterator, Filter implements
+the DbIterator interface through its extension of Operator).  Since they are already defined,
+it is therefore not necessary for the two methods to be explicitly implemented again within
+the Filter class.  The way "hasNext()" and "next()" are written, they will call the fetchNext()
+method as implemented in the Filter class. Our iterator should work successfully.
+
 5.
+		while (iterR.hasNext())
+			{
+				Tuple t = iterR.next;
+				if t matches predicate:
+					return t
+			}
+			return null
+
 6.
+		list = []
+		iterR.rewind();
+		while(iterR.hasNext())
+			{
+				iterS.rewind()
+				t1 = iterR.next();
+				while(iterS.hasNext())
+					{
+						t2 = iterS.next();
+						if t1 and t2 match join predicate:
+							{
+								tNew = merge(t1, t2);
+								list.append(tNew);
+							}
+					}
+			}
+			return list
+
 7.
+		
+		if (t1 == null)
+		{
+			if (iterR.hasNext())
+			{
+				t1 = iterR.next();
+			}
+		}
+		while(t1 != null)
+			{
+				while(iterS.hasNext())
+					{
+						t2 = iterS.next();
+						if t1 and t2 match join predicate:
+							{
+								tNew = merge(t1, t2);
+								return tNew;
+							}
+					}
+					if(iterR.hasNext())
+					{
+						t1 = iterR.next();
+					}
+					else
+					{
+						t1 = null;
+					}
+					iterS.rewind();
+			}
+			return null;
+
 
 After you complete lab 3, please answer the following questions.  
 
