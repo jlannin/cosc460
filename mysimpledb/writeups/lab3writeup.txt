@@ -1,0 +1,35 @@
+Report for Lab 3
+----------------
+
+Answer the questions from the lab description here.  Questions 8 and 9 do not require answers.
+
+1.
+2.
+3.
+4.
+5.
+6.
+7.
+
+After you complete lab 3, please answer the following questions.  
+
+1. What is your name?  If you work with a partner, be sure to write both of your names.
+
+<Replace this text with your answer>
+
+2. What did you think of this assignment?
+
+<Replace this text with your answer>
+
+3. What was the hardest part of this assignment?
+
+<Replace this text with your answer>
+
+4. Describe any missing or incomplete elements of your code.
+
+<Replace this text with your answer>
+
+5. Roughly how long did you spend working on this lab?
+
+<Replace this text with your answer>
+
