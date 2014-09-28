@@ -1,4 +1,4 @@
-Students(sid int, name string)
-Takes(sid int, cid int)
-Courses(cid int, title string)
-Profs(pid int, name string, favoriteCourse int)
+students(sid int, name string)
+takes(sid int, cid int)
+courses(cid int, title string)
+profs(pid int, name string, favoriteCourse int)
