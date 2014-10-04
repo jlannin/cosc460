@@ -146,7 +146,7 @@ public class Join extends Operator {
 
     @Override
     public DbIterator[] getChildren() {
-    	DbIterator[] iterarray = {child1, child2};
+    	DbIterator[] iterarray = new DbIterator[] {child1, child2};
         return iterarray;
     }
 

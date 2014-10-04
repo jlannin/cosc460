@@ -206,11 +206,13 @@ public class HeapFile implements DbFile {
 		private Iterator iterup;
 		private boolean nextfound = false;
 		private Tuple nexttup;
+		private int numpages;
 		
 		public myiterator(TransactionId tid)
 		{
 			transid = tid;
 			index = 0;
+			numpages = numPages();
 		}
 		
 		public void open() throws DbException, TransactionAbortedException
@@ -250,8 +252,12 @@ public class HeapFile implements DbFile {
 	    		{
 	    			while (true)
 	    			{
+	    				if (index == numpages) // already know at last page
+	    				{
+	    					return false;
+	    				}
 	    				index++;
-	    				if (index == numPages()) // at last page
+	    				if (index == numpages) // moving to last page?
 	    				{
 	    					return false;
 	    				}

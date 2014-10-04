@@ -70,7 +70,7 @@ public class Filter extends Operator {
 
     @Override
     public DbIterator[] getChildren() {
-    	DbIterator[] iterarray = {iter};
+    	DbIterator[] iterarray = new DbIterator[] {iter};
         return iterarray;
     }
 
