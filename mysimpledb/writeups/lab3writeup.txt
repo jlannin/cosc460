@@ -83,6 +83,15 @@ method as implemented in the Filter class. Our iterator should work successfully
 			return null;
 
 
+Aggregate write up:
+
+In my aggregate implementation, I perform all of the aggregating when the iterator in
+Aggregate is opened.  In the Int/StringAggregators I store the aggregates by the group
+field in a hashmap which I can use to update for each next tuple.  In the IntAggregator I decided to
+always calculate the sum and count of the tuples (stored in the Countandsum objects) in order to 
+get the most accurate avg as possible. At the end I just return the iterator on the hashmap's values
+which are Tuples. 
+
 After you complete lab 3, please answer the following questions.  
 
 1. What is your name?  If you work with a partner, be sure to write both of your names.
@@ -91,17 +100,22 @@ Justin Lannin
 
 2. What did you think of this assignment?
 
-<Replace this text with your answer>
+It was good to get practice with actual SQL with the SQL Lite and I enjoyed working on the challenge
+part of the lab.
 
 3. What was the hardest part of this assignment?
 
-<Replace this text with your answer>
+I think the challenge was (expectedly) the hardest part of this assignment as it took
+a while to figure out how everything was working together between the three classes.  A couple of the
+SQL problems took a bit of time to get right but they were not overly hard.
 
 4. Describe any missing or incomplete elements of your code.
 
-<Replace this text with your answer>
+I don't think anything should be missing.  I got all of the Aggregate tests to pass as well,
+but I may stop by your office to see if there was a better way of implementing them than I came
+up with.
 
 5. Roughly how long did you spend working on this lab?
 
-<Replace this text with your answer>
+I spent a normal amount of time on the lab and a couple of hours finishing the challenge.  
 

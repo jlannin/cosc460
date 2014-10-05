@@ -37,7 +37,7 @@ select " ";
 select "Q3";
 
 /* Put your SQL for Q3 below */
-select title from Movie m except select title from Movie m, Rating r where m.mID = r.mID;
+select title from Movie m except select title from Movie m, Rating r where m.mID = r.mID order by title;
 
 /* Q4 -  Write a query to return the ratings data in a more 
          readable format: reviewer name, movie title, stars, and ratingDate. 
