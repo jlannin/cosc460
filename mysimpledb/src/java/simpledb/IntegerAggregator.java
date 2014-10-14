@@ -82,7 +82,8 @@ public class IntegerAggregator implements Aggregator {
 	private Tuple aggregate(Tuple oldtup, Tuple newtup, Countandsum c, int loc)
 	{
 		c.increaseCount();
-		int value = ((IntField) newtup.getField(loc)).getValue();
+		int value = ((IntField) newtup.getField(aggfield)).getValue();
+		System.out.println(value);
 		c.sum(value);
 		if (operator == Aggregator.Op.COUNT)
 		{

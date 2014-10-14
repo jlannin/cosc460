@@ -43,7 +43,10 @@ public class AggregateTest extends SimpleDbTestBase {
 				throw new IllegalArgumentException("Unsupported operation " + operation);
 			}
 		}
-		if (operation == Aggregator.Op.AVG) value /= values.size();
+		if (operation == Aggregator.Op.AVG) 
+			{
+				value /= values.size();
+			}
 		return value;
 	}
 
@@ -70,7 +73,7 @@ public class AggregateTest extends SimpleDbTestBase {
 		return results;
 	}
 
-	private final static int ROWS = 1024;
+	private final static int ROWS = 5;
 	private final static int MAX_VALUE = 64;
 	private final static int COLUMNS = 3;
 
