@@ -1,0 +1,25 @@
+Questions
+---------
+
+Answer these questions.  With each question is a hint as to which part of the code walk you might consult to find the answer.
+
+(Walk thru 1) How many instances of the TableStats class are created?
+
+(Walk thru 4) In class, we said a logical plan is a relational algebra tree.  That's not how it's represented in SimpleDB.  How is it represented? 
+
+(Walk thru 5) The physicalPlan is a relational algebra tree.  Describe the basic shape of this tree in terms of which ops go where.
+
+(Walk thru 5) Suppose a query applies multiple filters to a single table.  For example, the query described in the lab write up filters on both actor first and last name.  In such cases, how is the selectivity estimated?  
+
+(Walk thru 5) Explain the meaning of this if statement.  Why should the subplanMap have size 0 or 1 at this point?
+
+    if (subplanMap.size() > 1) {
+        throw new ParsingException("Query does not include join expressions joining all nodes!");
+    }
+
+(Walk thru 7) What does computeCostAndCardOfSubplan do when the joinSet contains only a single join, the joinToRemove?
+
+(Walk thru 9) Suppose we are considering a join between a table A and the result of a join between B and C.  Assume table A is the outer relation in the join.  What is the cost estimate?  Your expression should be in terms of the sizes (# pages, # tuples) of the base relations A, B, C.
+
+(Walk thru 10) In lab 3, you write Join and Filter operators.  Both of these support the DbIterator interface.  When/where are these iterators called?
+

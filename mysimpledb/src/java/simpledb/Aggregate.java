@@ -2,6 +2,8 @@ package simpledb;
 
 import java.util.*;
 
+import simpledb.Aggregator.Op;
+
 /**
  * The Aggregation operator that computes an aggregate (e.g., sum, avg, max,
  * min). Note that we only support aggregates over a single column, grouped by a
@@ -197,5 +199,4 @@ public class Aggregate extends Operator {
 	public void setChildren(DbIterator[] children) {
 		iter = children[0];
 	}
-
 }

@@ -1,0 +1,29 @@
+Exercise 7
+----------
+
+Query 1:
+
+select d.fname, d.lname
+from Actor a, Casts c, Movie_Director m, Director d
+where a.id=c.pid and c.mid=m.mid and m.did=d.id 
+and a.fname='Ginger' and a.lname='Rogers';
+
+Query 1 optimizer's plan:
+
+<fill in here>
+
+Query 1 plan explanation:
+
+<fill in here>
+
+Query 2:
+
+<fill in here>
+
+Query 1 optimizer's plan:
+
+<fill in here>
+
+Query 1 plan explanation:
+
+<fill in here>

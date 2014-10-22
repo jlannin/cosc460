@@ -1,0 +1,63 @@
+Lab 4 Code Walk
+---------------
+
+Walk thru 1: simpledb.Parser.main() and simpledb.Parser.start()
+
+	simpledb.Parser.main() is the entry point for the SimpleDB system. It calls simpledb.Parser.start(). The latter performs three main actions:
+		1) It populates the SimpleDB catalog from the catalog text file provided by the user as argument (Database.getCatalog().loadSchema(argv[0]);).
+		2) For each table defined in the system catalog, it computes statistics over the data in the table by calling: TableStats.computeStatistics(), which then does: TableStats s = new TableStats(tableid, IOCOSTPERPAGE);
+		3) It processes the statements submitted by the user (processNextStatement(new ByteArrayInputStream(statementBytes));)
+
+Walk thru 2: simpledb.Parser.processNextStatement()
+
+	This method takes in the user input and attempts to parse it as SQL, using
+	the Zql parsing library.  This method handles bad user input, as well as valid SQL statements include INSERT, DELETE, and SELECT statements.  
+
+	We focus on the SELECT statement which is handled by 
+		handleQueryStatement((ZQuery)s)
+	This returns a Query object, which is then executed by calling
+		query.execute();
+
+Walk thru 3: simpledb.Parser.handleQueryStatement()
+
+	<fill this in>	
+
+Walk thru 4: simpledb.Parser.parseQueryLogicalPlan()
+
+	<fill this in>
+
+	Note: this method is rather long and complex.  Your walk thru should focus
+	on the high-level ideas.  Specifically, explain how SQL query is processed to construct the LogicalPlan.  
+ 
+Walk thru 5: simpledb.LogicalPlan.physicalPlan()
+
+	Your walk thru should explain how these data structures are used:
+		- equivMap
+		- filterSelectivities
+		- statsMap
+		- subplanMap
+
+	<fill this in>
+
+Walk thru 6: simpledb.JoinOptimizer.orderJoins()
+
+	<fill this in>
+
+Walk thru 7: JoinOptimizer.computeCostAndCardOfSubplan()
+
+	<fill this in>
+
+Walk thru 8: JoinOptimizer.estimateJoinCost()
+
+	<fill this in>
+
+Walk thru 9: JoinOptimizer.estimateJoinCardinality()
+
+	<fill this in>
+
+Walk thru 10 query.execute()
+	
+	Note: This is called inside simpledb.Parser.processNextStatement().  Refer back to Walk thru 2.
+
+	<fill this in>
+
