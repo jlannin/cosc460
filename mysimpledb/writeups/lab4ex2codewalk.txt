@@ -43,7 +43,7 @@ Walk thru 4: simpledb.Parser.parseQueryLogicalPlan()
 		  to the logical plan based upon these two fields.  If the right table is actually a nested query itself, then we recursively call parseQueryLogicalPlan to get the logical plan of the
 		  nested query.  We then use the logical plan of the nested query to create its physical plan and from there are able to get the iterator of the physical plan which
 		  we use (along with the field in the left table) when we then add the join to the logical plan.
-		- Finally if we are performing a "select", then it gets the field, operator, and constant value to compare and adds a filter to the logical plan
+		- If we are performing a "select", then it gets the field, operator, and constant value to compare and adds a filter to the logical plan
 		- It then looks for any groupings (GROUP BY clause) and handles unsupported cases
 		- Then it walks through the select list, looping through the "selects" pulled from the ZQuery
 			- For each select statement, it first ensures the expression/aggregate is supported
@@ -65,14 +65,16 @@ Walk thru 5: simpledb.LogicalPlan.physicalPlan()
 	a filterSelectivity of 1 and the TableStats from the input map baseTableStats.  
 
 	- Next it looks at each filter from the where clause, first picking out the corresponding table and then getting the field to be used in the filter.  Then a new Field object is created from the filter's
-	constant value, and a new predicate from the field name, predicate, and Field object. It then adds the new filter object to subplanMap and finishes by updating the selectivity of the table in filterSelectivities
+	constant value, and then a new predicate is created from the field name, predicate, and Field object. It then adds the new filter object to subplanMap and finishes by updating the selectivity of the table in filterSelectivities
 	by taking the old selectivity of the table and multiplying it by the estimaged selectivity of the filter.   This is equivalent to pushing filters down before performing any joins.
 
 	- In the next section of this method we create a new join optimizer and order the joins in the most cost efficient way possible based upon the table stats and selectivities. It then loops through everything that
-	needs to be joined, getting the two tables (one may be a subquery) and their subplans, and calls "instatiate join" to create the best iterator for computing the logical join.  If we are just joining two tables
-	then now both tables are a part of table one and so we remove the right table from subplanMap (since we have just joined it with the left table) and any time it appears in equivMap we replace it with table one.
+	needs to be joined, getting the two tables (one may be a subquery) and their subplans, and calls "instatiate join" to create the best iterator for computing the logical join.  If we are joining two tables
+	then now both tables are a part of table one and so we remove the right table from subplanMap.  Again because we just joined it with the left table, any time table two appears in equivMap we replace it with table one.
 	eqiuvMap is used to check to see if a given table that we are looking has been joined already into part of another table.  If table x appears in equivMap then we know that it has been joined already and so we should
-	use the value returned from the table x key as our new table to join.
+	use the value returned from the table.get(x key) as our new table to join.
+
+	- We next create our final DbIterator from the entry set of our subplanMap.
 
 	- We next look at the select statements to try to determine the best order of the projection of our final table.  We look at the case when we are calculating an aggregate, when we are doing a group by, when we are selecting all columns
 	and when we just select the fields specified in the Logical Select List Node.  We put our desired fieldnames and fieldtypes into two arrayLists. 
@@ -82,7 +84,7 @@ Walk thru 5: simpledb.LogicalPlan.physicalPlan()
 
 Walk thru 6: simpledb.JoinOptimizer.orderJoins()
 
-	The orderJoins method takes the tables present in the stats and filterSelectivities HashMaps, and returns the optimal join in the form of a vector of left-deep joins. If explain is specified we have to print our our final join.
+	The orderJoins method takes the tables present in the stats and filterSelectivities HashMaps, and returns the optimal join in the form of a vector of left-deep joins. If explain is true then we have to also print out our final join.
 	orderJoins will use a Selinger-style optimizer to find the optimal value.  The general process will be as follows:
 
 		create Plan Cache pc
@@ -102,9 +104,9 @@ Walk thru 6: simpledb.JoinOptimizer.orderJoins()
 Walk thru 7: JoinOptimizer.computeCostAndCardOfSubplan()
 
 	This method is performing the main calculations of the Selinger algorithm in that it calculates the best way of joining joinToRemove from the rest of joinSet.  The Set "news" is used to represent joinSet-joinToRemove.
-	First the method handles the case when the two objects being joined are base tables (so "news" is empty.  These have fairly simple to calculate costs).  It then figures out the best way of joining joinToRemove to joinSet,
-	grabbing the previous best of the right joinSet from the cache or of the left joinSet if the right is unavailable.  Next it determines whether the cost is lower with j as the outer relation or as the inner relation
-	and based upon this calculation, updates everything accourding to which of the wild it finishes by filling out and returning the CostCard with all of the appropriate vales. 	
+	First the method handles the case when the two objects being joined are base tables (so "news" is empty).  These have fairly simple to calculate costs and so we calculate the cost and cardinality of both tables.  It 
+	then figures out the best way of joining joinToRemove to joinSet, grabbing the previous best of the left joinSet from the cache or of the right joinSet if the left is unavailable. It determines whether the cost is
+	lower with j as the outer relation or as the inner relation (by swappingInnerOuter()) and based upon these calculations, updates everything and finishes by filling out and returning the CostCard with all of the appropriate vales. 	
 	
 	
 Walk thru 8: JoinOptimizer.estimateJoinCost()
@@ -124,7 +126,7 @@ Walk thru 9: JoinOptimizer.estimateJoinCardinality()
 	We can get the two distinct counts from the stats HashMap and a simple test will give us the max.  We can get the number of tuples in each relation by using
 	estimate Table Cardinality with a selectivity factor of 1.  Once we have all of these values, it is a simple calculation to get the estimated "Join Cardinality"
 
-	We will have to put in additional checks for when you think that your fields are primary keys, but otherwise all cases should be happening.
+	We will have to put in additional checks for when you think that your fields are primary keys, but otherwise many cases should continue happening.
 	
 
 Walk thru 10 query.execute()
@@ -132,5 +134,6 @@ Walk thru 10 query.execute()
 	Note: This is called inside simpledb.Parser.processNextStatement().  Refer back to Walk thru 2.
 
 	This method executes the Query.  First it gets the Tuple Desc of the Query Plan Iterator and uses it to print out all of the field names.
-	It then opens up the iterator, and walks through the iterator printing out every next tuple while there is a next (using the iterator's next and hasnext functions) until it processes
+	It then opens up the iterator, and walks through the iterator printing out every next tuple (processed according to our physicalPlan 
+	DbIterator so that next() is probably calling fetchNext()) while there is a next (using the iterator's next and hasnext functions) until it processes
 	all tuples.  It finishes by printing out the total number of rows and then closing the iterator.
