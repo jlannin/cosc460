@@ -104,10 +104,9 @@ Walk thru 6: simpledb.JoinOptimizer.orderJoins()
 Walk thru 7: JoinOptimizer.computeCostAndCardOfSubplan()
 
 	This method is performing the main calculations of the Selinger algorithm in that it calculates the best way of joining joinToRemove from the rest of joinSet.  The Set "news" is used to represent joinSet-joinToRemove.
-	First the method handles the case when the two objects being joined are base tables (so "news" is empty).  These have fairly simple to calculate costs and so we calculate the cost and cardinality of both tables.  It 
-	then figures out the best way of joining joinToRemove to joinSet, grabbing the previous best of the left joinSet from the cache or of the right joinSet if the left is unavailable. It determines whether the cost is
-	lower with j as the outer relation or as the inner relation (by swappingInnerOuter()) and based upon these calculations, updates everything and finishes by filling out and returning the CostCard with all of the appropriate vales. 	
-	
+	First the method handles the case when the two objects being joined are base tables (so "news" is empty).  These have pretty straightforwrd cost calculations and so we calculate the cost and cardinality of both tables. It 
+	then figures out the best way of joining joinToRemove to joinSet, grabbing the previous best of the left joinSet from the cache or, if the left is unavailable, the previous best of the right joinSet. It determines whether the cost is
+	lower with j as the outer relation or as the inner relation (by finding costs, swappingInnerOuter(), finding new costs and comparing) and based upon these calculations, finishes by filling out and returning the CostCard for the cheaper plan.	
 	
 Walk thru 8: JoinOptimizer.estimateJoinCost()
 
@@ -123,10 +122,10 @@ Walk thru 9: JoinOptimizer.estimateJoinCardinality()
 	This method estimates the cardinality of the join specified by the LogicalJoinNode j.  It will eventually handle the case of joining both with a subquery and with a table.
 
 	The cardinality of a join on two tables is calculated as follows:  ntups(t1 join t2) = ntups(t1) * ntups(t2) / max ( V(A, t1), V(B, t2) )
-	We can get the two distinct counts from the stats HashMap and a simple test will give us the max.  We can get the number of tuples in each relation by using
+	We can get the two distinct counts from the stats HashMap and a simple comparison will give us the max of the two.  We can get the number of tuples in each relation by using
 	estimate Table Cardinality with a selectivity factor of 1.  Once we have all of these values, it is a simple calculation to get the estimated "Join Cardinality"
 
-	We will have to put in additional checks for when you think that your fields are primary keys, but otherwise many cases should continue happening.
+	We will have to put in additional checks for when the fields are primary keys, but otherwise we should be good to go.
 	
 
 Walk thru 10 query.execute()
@@ -134,6 +133,7 @@ Walk thru 10 query.execute()
 	Note: This is called inside simpledb.Parser.processNextStatement().  Refer back to Walk thru 2.
 
 	This method executes the Query.  First it gets the Tuple Desc of the Query Plan Iterator and uses it to print out all of the field names.
-	It then opens up the iterator, and walks through the iterator printing out every next tuple (processed according to our physicalPlan 
-	DbIterator so that next() is probably calling fetchNext()) while there is a next (using the iterator's next and hasnext functions) until it processes
-	all tuples.  It finishes by printing out the total number of rows and then closing the iterator.
+	It then opens up the "op" iterator, and walks through the iterator printing out every next tuple processed according to our physicalPlan. 
+	When next() is called on the query, it is using the next() of the DbIterator.  The DbIterator's next() must call fetchNext() of the operator
+	iterator on the table to process the tuple.  We will continue stepping through the query while there is a next (using the iterator's hasnext()
+	function) until it processes all tuples.  It finishes by printing out the total number of rows and then closing the iterator.

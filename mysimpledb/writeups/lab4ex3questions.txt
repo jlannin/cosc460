@@ -5,23 +5,44 @@ Answer these questions.  With each question is a hint as to which part of the co
 
 (Walk thru 1) How many instances of the TableStats class are created?
 
-	A TableStat is created for every table that we have in our database.
+	A TableStat is created for every table that we have in our database in the computeStatistics method.
 
 
 (Walk thru 4) In class, we said a logical plan is a relational algebra tree.  That's not how it's represented in SimpleDB.  How is it represented? 
 
-
+	In SimpleDB, a logical plan is made up of multiple vectors.  There is a vector for filters, joins, selects (projections), and scans on the tables.  When we create the logical plan, we add
+	each of the different parts of the query to the corresponding vector. 
 
 
 (Walk thru 5) The physicalPlan is a relational algebra tree.  Describe the basic shape of this tree in terms of which ops go where.
 
-	When building our physicalPlan, we always push our filters down on top of the tables before the joins.
+	When building our physicalPlan, we always push our filters down to the tables before we starting joining them.  When performing the joins, we join the "plans" of the tables
+	which might include the filters or other joins to be done.  At this point our subplanMap should have a single value in it of all of the joins and filters.  We then look at
+	if there is any aggregating or ordering before finally returning the projection of our desired final fieldnames and types.
+
+	Overall the iterator might look something like this:		Projection(join(join(A,filter B), filter C)
+	All filters are pushed down and then all tables are joined before finally the projection is created.
+	As a tree, I believe that it would look something like this:
+
+		projection
+		     |
+		 Any Joins 
+	    (or joins of joins)
+		/	  \
+	  Any Filters	Any Filters
+		|	      |
+	    Base table	  Base table
 
 
 
 (Walk thru 5) Suppose a query applies multiple filters to a single table.  For example, the query described in the lab write up filters on both actor first and last name.  In such cases, how is the selectivity estimated?
 
-	The selectivity is estimated by multiplying the estimated selectivity each filter together.  In this example, we would multiply the estimated selectivity of the filter on actor first name with the estimated selectivity
+	The selectivity is estimated by multiplying the estimated selectivity each filter together.  
+
+		double sel = s.estimateSelectivity(subplan.getTupleDesc().fieldNameToIndex(lf.fieldQuantifiedName), lf.p, f);  //selectivity of filter
+        	filterSelectivities.put(lf.tableAlias, filterSelectivities.get(lf.tableAlias) * sel);	//Old selectivity * selectivity of newest filter.
+
+	In this example, we would multiply the estimated selectivity of the filter on actor first name with the estimated selectivity
 	of actor last name to get our final estimation.
 
   
@@ -32,9 +53,16 @@ Answer these questions.  With each question is a hint as to which part of the co
         throw new ParsingException("Query does not include join expressions joining all nodes!");
     }
 
+	After we iterate through the Joins Vector of the logical plan, we should only have a size of 0 or 1 at this point because all of the joins should have merged together so that now
+	all of the tables are under a single table in our subplanMap. For example, if we join A, B, C, and D, after we loop through all of the joins, we should have the subplanMap with key A
+	which maps to the iterator that joins A, B, C, and D.  If subplanMap were bigger than a size of 1, then not all of the tables would have been joined together and so we tell the user that
+	in their query they didn't join all of the tables.  For example, if subplanMap had the items (A, join A,B) and (C, join C,D) then it means that the user failed to join either A or B with
+	C or D in their query.  Since we need all of the tables to be joined together to produce a single relation at the end.  This is an error and we throw a new Parsing Exception.
+
 (Walk thru 7) What does computeCostAndCardOfSubplan do when the joinSet contains only a single join, the joinToRemove?
 
-
+	When joinSet contains only joinToRemove, then the "news" Set will be empty. It estimates the cost and cardinality of scanning each table and tests to see whether the field we are using is a primary key to the table.
+	It then compares the estimated cost of the join with each table as the left table and returns the CostCard for the join with the lower cost.
 
 
 (Walk thru 9) Suppose we are considering a join between a table A and the result of a join between B and C.  Assume table A is the outer relation in the join.  What is the cost estimate?  Your expression should be in terms of the sizes (# pages, # tuples) of the base relations A, B, C.
@@ -46,3 +74,8 @@ Answer these questions.  With each question is a hint as to which part of the co
 
 (Walk thru 10) In lab 3, you write Join and Filter operators.  Both of these support the DbIterator interface.  When/where are these iterators called?
 
+	When a query is executed, it iterates through the "op" DbIterator, which will be the Physical Plan iterator. The Physical Plan was created from the subplanMap which, by the end
+	of the physicalPlan() method, contained a single item (table, iterator of all operations on the table).  For example if we were doing a select statement from one table with a single
+	filter, subplanMap would be have the value (table, filter on table).  If we were also performing a join, then we would have (table, join A (filter on B).  When the query is stepping
+	through itself, this.next() calls next() of the physicalPlan iterator.  This is where our join or filter would get called as the physicalPlan iterator would call "fetchNext" for the
+	filter or the join.  The tuple would be processed and printed out as part of the execute method. 
