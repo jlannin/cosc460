@@ -55,28 +55,51 @@ Walk thru 4: simpledb.Parser.parseQueryLogicalPlan()
 Walk thru 5: simpledb.LogicalPlan.physicalPlan()
 
 	Your walk thru should explain how these data structures are used:
-		- equivMap
-		- filterSelectivities
-		- statsMap
-		- subplanMap
+		- equivMap  ->  A HashMap from String to String used to keep track of tables that have been previously joined into other tables.  If we want to join C with B and A and B have already been joined then
+				we need to ensure that we are performing our new join on the results of the previous join AB (which is now located under the alias table A) and not just on B.
+		- filterSelectivities ->  A HashMap from table names to filter selectivities. Keeps track of the most up-to-date filter selectivity of each table
+		- statsMap  ->  A HashMap from table names to TableStats, statsMap holds the TableStats of each table
+		- subplanMap  ->  A HashMap from table names to DbIterators, this is used to build up our phyiscal plan as each table name maps to a DbIterator (complete with all filters/joins...)  on the table.
 
-	<fill this in>
+	- First the method creates a new SeqScan on each of the tables in the Logical Plan and adds them to the subplanMap HashMap. Then it adds the table to the filterSelectivities and statsMap Hashmaps using
+	a filterSelectivity of 1 and the TableStats from the input map baseTableStats.  
+
+	- Next it looks at each filter from the where clause, first picking out the corresponding table and then getting the field to be used in the filter.  Then a new Field object is created from the filter's
+	constant value, and a new predicate from the field name, predicate, and Field object. It then adds the new filter object to subplanMap and finishes by updating the selectivity of the table in filterSelectivities
+	by taking the old selectivity of the table and multiplying it by the estimaged selectivity of the filter.   This is equivalent to pushing filters down before performing any joins.
+
+	- In the next section of this method we create a new join optimizer and order the joins in the most cost efficient way possible based upon the table stats and selectivities. It then loops through everything that
+	needs to be joined, getting the two tables (one may be a subquery) and their subplans, and calls "instatiate join" to create the best iterator for computing the logical join.  If we are just joining two tables
+	then now both tables are a part of table one and so we remove the right table from subplanMap (since we have just joined it with the left table) and any time it appears in equivMap we replace it with table one.
+	eqiuvMap is used to check to see if a given table that we are looking has been joined already into part of another table.  If table x appears in equivMap then we know that it has been joined already and so we should
+	use the value returned from the table x key as our new table to join.
+
+	- We next look at the select statements to try to determine the best order of the projection of our final table.  We look at the case when we are calculating an aggregate, when we are doing a group by, when we are selecting all columns
+	and when we just select the fields specified in the Logical Select List Node.  We put our desired fieldnames and fieldtypes into two arrayLists. 
+
+	- Lastly, we perform the aggregate and then any ordering before finally projecting out our desired fieldnames and fieldtypes.
+	
 
 Walk thru 6: simpledb.JoinOptimizer.orderJoins()
 
-	<fill this in>
+	
 
 Walk thru 7: JoinOptimizer.computeCostAndCardOfSubplan()
 
-	<fill this in>
+	
 
 Walk thru 8: JoinOptimizer.estimateJoinCost()
 
-	<fill this in>
+	In this method with our nested loops join, we estimate the cost of a join based upon the following formula:
+
+	costofscan(left) + (tuples in left)*costofscan(right)
+
+	cost1 + card1 * cost2
+	
 
 Walk thru 9: JoinOptimizer.estimateJoinCardinality()
 
-	<fill this in>
+	
 
 Walk thru 10 query.execute()
 	

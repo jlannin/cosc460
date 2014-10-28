@@ -12,7 +12,7 @@ import java.util.NoSuchElementException;
  * LogicalPlan represents a logical query plan that has been through
  * the parser and is ready to be processed by the optimizer.
  * <p/>
- * A LogicalPlan consits of a collection of table scan nodes, join
+ * A LogicalPlan consists of a collection of table scan nodes, join
  * nodes, filter nodes, a select list, and a group by field.
  * LogicalPlans can only represent queries with one aggregation field
  * and one group by field.
@@ -338,7 +338,7 @@ public class LogicalPlan {
             if (subplan == null) {
                 throw new ParsingException("Unknown table in WHERE clause " + lf.tableAlias);
             }
-
+            
             Field f;
             Type ftyp;
             TupleDesc td = subplanMap.get(lf.tableAlias).getTupleDesc();
@@ -390,8 +390,9 @@ public class LogicalPlan {
                 t2name = equivMap.get(lj.t2Alias);
             else
                 t2name = lj.t2Alias;
-
-            plan1 = subplanMap.get(t1name);
+            
+            // get the subplan of table 1
+            plan1 = subplanMap.get(t1name);	
 
             if (isSubqueryJoin) {
                 plan2 = ((LogicalSubplanJoinNode) lj).subPlan;
