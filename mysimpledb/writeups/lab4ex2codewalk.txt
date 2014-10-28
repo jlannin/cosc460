@@ -20,15 +20,38 @@ Walk thru 2: simpledb.Parser.processNextStatement()
 
 Walk thru 3: simpledb.Parser.handleQueryStatement()
 
-	<fill this in>	
+	This method creates a new query with the specified transaction Id.  It then creates a logical plan
+	from the ZQuery and uses that to make a physical plan.  The logical and physical plans are added
+	to the newly created Query Object. It then attempts to invoke the Query Plan Visualizer to print
+	out the new query, gracefulling handling the case when the class isn't present, before returning
+	the new query object.
 
 Walk thru 4: simpledb.Parser.parseQueryLogicalPlan()
-
-	<fill this in>
 
 	Note: this method is rather long and complex.  Your walk thru should focus
 	on the high-level ideas.  Specifically, explain how SQL query is processed to construct the LogicalPlan.  
  
+	The SQL query is processed in the following way to construct the Logical Plan:
+		- First create a new logical plan object and set its query as our ZQuery.toString
+		- Add all of the tables that we are scanning (the "FROM" clause) to the logical plan while handling the cases when a table does not exist
+		- Get the WHERE clause from our ZQuery and create the filter and joins
+			- If the operator is "AND" then it calls "processExpression" for each operand to ensure that everything is processed
+			- Handle unsupported cases of "OR", "Nested Queries", and "non-AND" expressions with more than two operands
+			- It then determines whether we are dealing with a join or a select, by seeing if the two operands are fields, constant values, or queries themselves.
+			  If both operands are fields or at least one is a subquery then we are performing a join. If one of the operands is a constant then we will be performing a select (filter).
+		- If we are performing a join, we first get the field we are using in the join of the left table.  If the right table is also a constant, then we get that field too and add a join
+		  to the logical plan based upon these two fields.  If the right table is actually a nested query itself, then we recursively call parseQueryLogicalPlan to get the logical plan of the
+		  nested query.  We then use the logical plan of the nested query to create its physical plan and from there are able to get the iterator of the physical plan which
+		  we use (along with the field in the left table) when we then add the join to the logical plan.
+		- Finally if we are performing a "select", then it gets the field, operator, and constant value to compare and adds a filter to the logical plan
+		- It then looks for any groupings (GROUP BY clause) and handles unsupported cases
+		- Then it walks through the select list, looping through the "selects" pulled from the ZQuery
+			- For each select statement, it first ensures the expression/aggregate is supported
+			- If there is an aggregate, it adds the aggregate field and function to the select list of the logical plan (and later adds the function as an aggregate to the Logical Plan)
+			- If there is not an aggregate then it adds the selected column to the logical plan's select list (after ensuring that every non-aggregate field appears in the group by)
+		- Finally, if there is a specified ORDER BY, it ensures that the ORDER BY is supported and adds the ordering to the logical plan
+		- Return the logical plan
+
 Walk thru 5: simpledb.LogicalPlan.physicalPlan()
 
 	Your walk thru should explain how these data structures are used:
@@ -59,5 +82,6 @@ Walk thru 10 query.execute()
 	
 	Note: This is called inside simpledb.Parser.processNextStatement().  Refer back to Walk thru 2.
 
-	<fill this in>
-
+	This method executes the Query.  First it gets the Tuple Desc of the Query Plan Iterator and uses it to print out all of the field names.
+	It then opens up the iterator, and walks through the iterator printing out every next tuple while there is a next (using the iterator's next and hasnext functions) until it processes
+	all tuples.  It finishes by printing out the total number of rows and then closing the iterator.

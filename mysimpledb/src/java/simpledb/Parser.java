@@ -679,7 +679,7 @@ public class Parser {
                         quit = true;
                         break;
                     }
-
+			
                     long startTime = System.currentTimeMillis();
                     processNextStatement(new ByteArrayInputStream(
                             statementBytes));
