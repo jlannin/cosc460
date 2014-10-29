@@ -195,10 +195,10 @@ public class HeapFile implements DbFile {
     // see DbFile.java for javadocs
     public DbFileIterator iterator(TransactionId tid) {
         
-    	return new myiterator(tid);
+    	return new Myiterator(tid);
     }
 
-	class myiterator implements DbFileIterator {
+	class Myiterator implements DbFileIterator {
 		private boolean open = false;
 		private int index;
 		private HeapPage currpage;
@@ -208,7 +208,7 @@ public class HeapFile implements DbFile {
 		private Tuple nexttup;
 		private int numpages;
 		
-		public myiterator(TransactionId tid)
+		public Myiterator(TransactionId tid)
 		{
 			transid = tid;
 			index = 0;

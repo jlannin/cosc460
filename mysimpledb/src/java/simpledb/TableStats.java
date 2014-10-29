@@ -3,6 +3,8 @@ package simpledb;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+import simpledb.TupleDesc.TDItem;
+
 /**
  * TableStats represents statistics (e.g., histograms) about base tables in a
  * query.
@@ -10,6 +12,93 @@ import java.util.concurrent.ConcurrentHashMap;
  * This class is not needed in implementing lab1|lab2|lab3.                                                   // cosc460
  */
 public class TableStats {
+
+	class HelpNode
+	{
+		private Type fieldType;
+		private int min;
+		private int max;
+		private int distinctValues;
+		private HashSet<Integer> distinctInts;
+		private HashSet<String> distinctStrings;
+
+		public HelpNode(Type type, int num)
+		{
+			fieldType = type;
+			if(fieldType == Type.INT_TYPE)
+			{
+				this.min = num;
+				this.max = num;
+				distinctInts = new HashSet<Integer>();
+			}
+			else
+			{
+				distinctStrings = new HashSet<String>();
+			}
+			distinctValues = 0;
+		}
+
+		public void checkDistinct(int x)
+		{
+			if(!distinctInts.contains(x))
+			{
+				distinctValues++;
+				distinctInts.add(x);
+			}
+			checkMinMax(x);
+		}
+
+		public void checkDistinct(String s)
+		{
+			if(!distinctStrings.contains(s))
+			{
+				distinctValues++;
+				distinctStrings.add(s);
+			}
+		}
+
+		public int getMin()
+		{
+			if(fieldType == Type.INT_TYPE)
+			{
+				return min;
+			}
+			else
+			{
+				throw new RuntimeException("No Min for STRING_TYPE");
+			}
+		}
+
+		public int getMax()
+		{	
+			if (fieldType == Type.INT_TYPE)
+			{
+				return max;
+			}
+			else
+			{
+				throw new RuntimeException("No Max for STRING_TYPE");
+			}
+		}
+
+		public int getDistinct()
+		{
+			return distinctValues;
+		}
+		
+		private void checkMinMax(int x)
+		{
+			if(x > max)
+			{
+				max = x;
+			}
+			else if (x < min)
+			{
+				min = x;
+			}
+		}
+
+	}
 
 	private static final ConcurrentHashMap<String, TableStats> statsMap = new ConcurrentHashMap<String, TableStats>();
 
@@ -66,9 +155,10 @@ public class TableStats {
 	final int numpages;
 	int numtuples;
 	TupleDesc td;
-	HashMap<Integer, Integer> distinctvals;
-	HashMap<String, IntHistogram> intstats;
-	HashMap<String, StringHistogram> stringstats;
+
+	HashMap<Integer, Integer> distinctVals;
+	HashMap<String, IntHistogram> intStats;
+	HashMap<String, StringHistogram> stringStats;
 
 	/**
 	 * Create a new TableStats object, that keeps track of statistics on each
@@ -80,217 +170,195 @@ public class TableStats {
 	 */
 	public TableStats(int tableid, int ioCostPerPage) {
 		costPerPage = ioCostPerPage;
-		distinctvals = new HashMap<Integer, Integer>();
-		intstats = new HashMap<String, IntHistogram>();
-		stringstats = new HashMap<String, StringHistogram>();
+		intStats = new HashMap<String, IntHistogram>();
+		stringStats = new HashMap<String, StringHistogram>();
+		distinctVals = new HashMap<Integer, Integer>();
 		HeapFile db = (HeapFile) Database.getCatalog().getDatabaseFile(tableid);
 		numpages = db.numPages();
 		td = db.getTupleDesc();
 		int numfields = td.numFields();
 		int count = 0;
-		int distinctcount;
-		int min;
-		int max;
-		for (int i = 0; i < numfields; i++)
-		{
-			distinctcount = 0;
-			String fieldname = td.getFieldName(i);
-			if(td.getFieldType(i) == Type.INT_TYPE)
+		DbFileIterator iter = db.iterator(new TransactionId());
+		HashMap<String,HelpNode> calculations = new HashMap<String, HelpNode>();
+		try {
+			iter.open();
+			if(iter.hasNext())
 			{
-				DbFileIterator iter = db.iterator(new TransactionId());
-				HashSet<IntField> calculatedistinct = new HashSet<IntField>();
-				try {
-					iter.open();
-					if(iter.hasNext())
+				Tuple tp = iter.next();
+				for (int i = 0; i < numfields; i++)
+				{
+					Type type = td.getFieldType(i);
+					String name = td.getFieldName(i);
+					if(type == Type.INT_TYPE)
 					{
-						IntField field = (IntField) iter.next().getField(i);
-						min = field.getValue();
-						max = min;
-						calculatedistinct.add(field);
-						count = 1;
-						distinctcount = 1;
+						int value = ((IntField)tp.getField(i)).getValue();
+						calculations.put(name, new HelpNode(type, value));	
+						calculations.get(name).checkDistinct(value);
 					}
 					else
 					{
-						throw new RuntimeException("Empty Table!");
+						String value = ((StringField)tp.getField(i)).getValue();
+						calculations.put(name, new HelpNode(type, 0));
+						calculations.get(name).checkDistinct(value);
 					}
-					while(iter.hasNext())
-					{
-						IntField field = (IntField) iter.next().getField(i);
-						int value = field.getValue();
-						count++;
-						if (value > max)
-						{
-							max = value;
-						}
-						if (value < min)
-						{
-							min = value;
-						}
-						if (!calculatedistinct.contains(field))
-						{
-							distinctcount++;
-							calculatedistinct.add(field);
-						}
-					}
-					intstats.put(fieldname, new IntHistogram(NUM_HIST_BINS, min, max));
-					numtuples = count;
-					distinctvals.put(Integer.valueOf(i), Integer.valueOf(distinctcount));
-					iter.close();
-				} catch (DbException | TransactionAbortedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
 				}
+				count++;
+			}
+			while(iter.hasNext())
+			{
+				Tuple tp = iter.next();
+				for (int i = 0; i < numfields; i++)
+				{
+					Type type = td.getFieldType(i);
+					String name = td.getFieldName(i);
+					if(type == Type.INT_TYPE)
+					{
+						int value = ((IntField)tp.getField(i)).getValue();
+						HelpNode node = calculations.get(name);
+						node.checkDistinct(value);
+					}
+					else
+					{
+						String value = ((StringField)tp.getField(i)).getValue();
+						HelpNode node = calculations.get(name);
+						node.checkDistinct(value);
+					}
+				}
+				count++;
+			}
+			iter.close();
+			numtuples = count;
+		}
+		catch (DbException | TransactionAbortedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		for (int i = 0; i < numfields; i++)
+		{
+			Type type = td.getFieldType(i);
+			String name = td.getFieldName(i);
+			if(type == Type.INT_TYPE)
+			{
+				HelpNode help = calculations.get(name);
+				intStats.put(name, new IntHistogram(NUM_HIST_BINS, help.getMin(), help.getMax()));
+				distinctVals.put(Integer.valueOf(i), help.getDistinct());
 			}
 			else
 			{
-				DbFileIterator iter = db.iterator(new TransactionId());
-				HashSet<StringField> calculatedistinct = new HashSet<StringField>();
-				try {
-					iter.open();
-					if(iter.hasNext())
+				HelpNode help = calculations.get(name);
+				stringStats.put(name, new StringHistogram(NUM_HIST_BINS));
+				distinctVals.put(Integer.valueOf(i), help.getDistinct());
+			}
+		}
+		DbFileIterator iter2 = db.iterator(new TransactionId());
+		try {
+			iter2.open();
+			while(iter2.hasNext())
+			{
+				Tuple tp = iter2.next();
+				for (int i = 0; i < numfields; i++)
+				{
+					Type type = td.getFieldType(i);
+					String name = td.getFieldName(i);
+					if(type == Type.INT_TYPE)
 					{
-						StringField field = (StringField) iter.next().getField(i);
-						calculatedistinct.add(field);
-						count = 1;
-						distinctcount = 1;
+						int value = ((IntField)tp.getField(i)).getValue();
+						intStats.get(name).addValue(value);
 					}
 					else
 					{
-						throw new RuntimeException("Empty Table!");
+						String value = ((StringField)tp.getField(i)).getValue();
+						stringStats.get(name).addValue(value);
 					}
-					while(iter.hasNext())
-					{
-						StringField field = (StringField) iter.next().getField(i);
-						count++;
-						if (!calculatedistinct.contains(field))
-						{
-							distinctcount++;
-							calculatedistinct.add(field);
-						}
-					} 
-				stringstats.put(fieldname, new StringHistogram(NUM_HIST_BINS));
-				numtuples = count;
-				distinctvals.put(Integer.valueOf(i), Integer.valueOf(distinctcount));
-				iter.close();
-				}
-				catch (DbException | TransactionAbortedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
 				}
 			}
-			DbFileIterator iter = db.iterator(new TransactionId());
-			try {
-				if(td.getFieldType(i) == Type.INT_TYPE)
-				{
-					iter.open();
-					while(iter.hasNext())
-					{
-						IntField field = (IntField) iter.next().getField(i);
-						int value = field.getValue();
-						intstats.get(fieldname).addValue(value);
-					}
-					iter.close();
-				}
-				else
-				{
-					iter.open();
-					while(iter.hasNext())
-					{
-						StringField field = (StringField) iter.next().getField(i);
-						String value = field.getValue();
-						stringstats.get(fieldname).addValue(value);
-					}
-					iter.close();
-				}
-			} catch (DbException | TransactionAbortedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+			iter2.close();
+		} catch (DbException | TransactionAbortedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+
+	/**
+	 * Estimates the cost of sequentially scanning the file, given that the cost
+	 * to read a page is costPerPageIO. You can assume that there are no seeks
+	 * and that no pages are in the buffer pool.
+	 * <p/>
+	 * Also, assume that your hard drive can only read entire pages at once, so
+	 * if the last page of the table only has one tuple on it, it's just as
+	 * expensive to read as a full page. (Most real hard drives can't
+	 * efficiently address regions smaller than a page at a time.)
+	 *
+	 * @return The estimated cost of scanning the table.
+	 */
+	public double estimateScanCost() {
+
+		return numpages * costPerPage;
+	}
+
+	/**
+	 * This method returns the number of tuples in the relation, given that a
+	 * predicate with selectivity selectivityFactor is applied.
+	 *
+	 * @param selectivityFactor The selectivity of any predicates over the table
+	 * @return The estimated cardinality of the scan with the specified
+	 * selectivityFactor
+	 */
+	public int estimateTableCardinality(double selectivityFactor) {
+		if (selectivityFactor > 0 && selectivityFactor < (1/numtuples))
+		{
+			return 1;
+		}
+		return (int) Math.ceil(numtuples*selectivityFactor);
+	}
+
+	/**
+	 * This method returns the number of distinct values for a given field.
+	 * If the field is a primary key of the table, then the number of distinct
+	 * values is equal to the number of tuples.  If the field is not a primary key
+	 * then this must be explicitly calculated.  Note: these calculations should
+	 * be done once in the constructor and not each time this method is called. In
+	 * addition, it should only require space linear in the number of distinct values
+	 * which may be much less than the number of values.
+	 *
+	 * @param field the index of the field
+	 * @return The number of distinct values of the field.
+	 */
+	public int numDistinctValues(int field) {
+		return distinctVals.get(field);
+
+	}
+
+	/**
+	 * Estimate the selectivity of predicate <tt>field op constant</tt> on the
+	 * table.
+	 *
+	 * @param field    The field over which the predicate ranges
+	 * @param op       The logical operation in the predicate
+	 * @param constant The value against which the field is compared
+	 * @return The estimated selectivity (fraction of tuples that satisfy) the
+	 * predicate
+	 */
+	public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
+		if(td.getFieldType(field) == Type.INT_TYPE)
+		{
+			if(constant.getType() != Type.INT_TYPE)
+			{
+				throw new RuntimeException("Constant type does not match predicate field type");
 			}
-			
-			
-			
+			return intStats.get(td.getFieldName(field)).estimateSelectivity(op, ((IntField)constant).getValue());
 		}
-	}
-
-
-/**
- * Estimates the cost of sequentially scanning the file, given that the cost
- * to read a page is costPerPageIO. You can assume that there are no seeks
- * and that no pages are in the buffer pool.
- * <p/>
- * Also, assume that your hard drive can only read entire pages at once, so
- * if the last page of the table only has one tuple on it, it's just as
- * expensive to read as a full page. (Most real hard drives can't
- * efficiently address regions smaller than a page at a time.)
- *
- * @return The estimated cost of scanning the table.
- */
-public double estimateScanCost() {
-
-	return numpages * costPerPage;
-}
-
-/**
- * This method returns the number of tuples in the relation, given that a
- * predicate with selectivity selectivityFactor is applied.
- *
- * @param selectivityFactor The selectivity of any predicates over the table
- * @return The estimated cardinality of the scan with the specified
- * selectivityFactor
- */
-public int estimateTableCardinality(double selectivityFactor) {
-	if (selectivityFactor > 0 && selectivityFactor < (1/numtuples))
-	{
-		return numtuples;
-	}
-	return (int) Math.ceil(numtuples*selectivityFactor);
-}
-
-/**
- * This method returns the number of distinct values for a given field.
- * If the field is a primary key of the table, then the number of distinct
- * values is equal to the number of tuples.  If the field is not a primary key
- * then this must be explicitly calculated.  Note: these calculations should
- * be done once in the constructor and not each time this method is called. In
- * addition, it should only require space linear in the number of distinct values
- * which may be much less than the number of values.
- *
- * @param field the index of the field
- * @return The number of distinct values of the field.
- */
-public int numDistinctValues(int field) {
-	return distinctvals.get(field);
-
-}
-
-/**
- * Estimate the selectivity of predicate <tt>field op constant</tt> on the
- * table.
- *
- * @param field    The field over which the predicate ranges
- * @param op       The logical operation in the predicate
- * @param constant The value against which the field is compared
- * @return The estimated selectivity (fraction of tuples that satisfy) the
- * predicate
- */
-public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
-	if(td.getFieldType(field) == Type.INT_TYPE)
-	{
-		if(constant.getType() != Type.INT_TYPE)
+		else
 		{
-			throw new RuntimeException("Constant type does not match predicate field type");
+			if(constant.getType() != Type.STRING_TYPE)
+			{
+				throw new RuntimeException("Constant type does not match predicate field type");
+			}
+			return stringStats.get(td.getFieldName(field)).estimateSelectivity(op, ((StringField)constant).getValue());	
 		}
-		return intstats.get(td.getFieldName(field)).estimateSelectivity(op, ((IntField)constant).getValue());
 	}
-	else
-	{
-		if(constant.getType() != Type.STRING_TYPE)
-		{
-			throw new RuntimeException("Constant type does not match predicate field type");
-		}
-		return stringstats.get(td.getFieldName(field)).estimateSelectivity(op, ((StringField)constant).getValue());	
-	}
-}
 
 }
