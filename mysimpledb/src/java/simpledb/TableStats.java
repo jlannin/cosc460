@@ -85,7 +85,7 @@ public class TableStats {
 		{
 			return distinctValues;
 		}
-		
+
 		private void checkMinMax(int x)
 		{
 			if(x > max)
@@ -229,8 +229,10 @@ public class TableStats {
 			iter.close();
 			numtuples = count;
 		}
-		catch (DbException | TransactionAbortedException e) {
-			// TODO Auto-generated catch block
+		catch (DbException e) {
+			e.printStackTrace();
+		}
+		catch(TransactionAbortedException e) {
 			e.printStackTrace();
 		}
 
@@ -274,8 +276,10 @@ public class TableStats {
 				}
 			}
 			iter2.close();
-		} catch (DbException | TransactionAbortedException e) {
-			// TODO Auto-generated catch block
+		} catch (DbException e) {
+			e.printStackTrace();
+		}
+		catch(TransactionAbortedException e) {
 			e.printStackTrace();
 		}
 

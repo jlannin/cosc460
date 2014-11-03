@@ -10,20 +10,102 @@ and a.fname='Ginger' and a.lname='Rogers';
 
 Query 1 optimizer's plan:
 
-<fill in here>
+
+The query plan is:
+                                                 π(d.fname,d.lname),card:1
+                                                 |
+                                                 ⨝(m.did=d.id),card:1
+                              ___________________|____________________
+                              |                                      |
+                              ⨝(c.mid=m.mid),card:1                  |
+                ______________|_______________                       |
+                |                            |                       |
+                ⨝(a.id=c.pid),card:1         |                       |
+  ______________|______________              |                       |
+  |                           |              |                       |
+  σ(a.lname=Rogers),card:1    |              |                       |
+  |                           |              |                       |
+  σ(a.fname=Ginger),card:1    |              |                       |
+  |                           |            scan(Movie_Director m)    |
+scan(Actor a)               scan(Casts c)                          scan(Director d)
+
+
 
 Query 1 plan explanation:
 
-<fill in here>
+Select the first and last name of all directors who directed a movie that Ginger Rogers was in.
+
+Since we push the filters down, the Selects on the first and last name are pushed down to the
+scan of the Actor table.  We also notice that the projection of the first and last name is left
+until last.
+
+The join ordering makes sense as well.  Instead of joining all of the directors, or all of the casts
+with their movies, we join from the smallest subset of tuples to get the least expected cost.  We can see that
+first we only get the "Ginger Rogers" tuples from Actor, then get the list of movies that she was in,
+then get the Director IDs of those movies, and finally get the Director names. It will be much more costly
+if we do the join in any other order (assuming that the join is possible with the fields) because then we
+would be joining on entire tables as opposed to just the small subset of tuples corresponding to "Ginger Rogers."
 
 Query 2:
 
-<fill in here>
+select g.genre from Genre g, Movie_Director md, Movie_Director md1, Director d, Actor a, Casts c 
+where a.fname='Leslie' and a.lname = 'Nielsen'and a.id=c.pid 
+and c.mid = md.mid and md.did = d.id and d.id = md1.did and md1.mid = g.mid and g.genre!='Thriller' order by g.genre;
 
-Query 1 optimizer's plan:
+This query should select the movie genres of all movies directed by directors who have directed Leslie Nielsen in at least one
+of their movies.
 
-<fill in here>
+Query 2 optimizer's plan:
 
-Query 1 plan explanation:
+The query plan is:
+                                                                                            π(g.genre),card:1
+                                                                                            |
+                                                                                            o(g.genre),card:1
+                                                                                            |
+                                                                                            ⨝(md1.mid=g.mid),card:1
+                                                                      ______________________|_______________________
+                                                                      |                                            |
+                                                                      ⨝(d.id=md1.did),card:1                       σ(g.genre<>Thriller),card:4499
+                                                   ___________________|___________________                         |
+                                                   |                                     |                         |
+                                                   ⨝(md.did=d.id),card:1                 |                         |
+                               ____________________|____________________                 |                         |
+                               |                                       |                 |                         |
+                               ⨝(c.mid=md.mid),card:1                  |                 |                         |
+                _______________|_______________                        |                 |                         |
+                |                             |                        |                 |                         |
+                ⨝(a.id=c.pid),card:1          |                        |                 |                         |
+  ______________|_______________              |                        |                 |                         |
+  |                            |              |                        |                 |                         |
+  σ(a.lname=Nielsen),card:1    |              |                        |                 |                         |
+  |                            |              |                        |                 |                         |
+  σ(a.fname=Leslie),card:1     |              |                        |                 |                         |
+  |                            |            scan(Movie_Director md)    |               scan(Movie_Director md1)    |
+scan(Actor a)                scan(Casts c)                           scan(Director d)                            scan(Genre g)
 
-<fill in here>
+g.genre	
+------------
+Action
+Action
+Adventure
+Adventure
+Adventure
+Crime
+Drama
+Drama
+Drama
+Drama
+
+
+
+
+Query 2 plan explanation:
+
+Similar to Query 1, our join order is once again scheduled to have the lowest costs.  Here we too first get the single tuple
+containing "Leslie Nielsen."  Next we join to get the movies he was in, the directors of those movies, all movies of those directors and
+finally the genres of those movies.  It is the lowest cost to start from our selection of the actor Leslie Nielsen since we only have
+to compare one tuple at a time.  We also note that the selection removing any "Thriller" genres is pushed down on the scan of Genre, but
+this join is still performed last since we only want to find the genre of the movies that we care about (movies of directors of Leslie Nielse).
+If we performed any other join order, our joins would be massive.  For example, if we did the last three joins first, we would get all
+the genre's of the movies that every director directed when we only care about those directors that have directed Leslie Nielsen.  The
+projection and ordering are once again left for last.

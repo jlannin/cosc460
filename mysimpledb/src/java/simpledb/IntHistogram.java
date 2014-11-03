@@ -68,7 +68,7 @@ public class IntHistogram {
 	private int findbucket(int v)
 	{
 		int bucket = (v - min)/perbucket;
-		if (bucket == histogram.length)
+		if (bucket >= histogram.length)
 		{
 			bucket = histogram.length-1;
 		}
