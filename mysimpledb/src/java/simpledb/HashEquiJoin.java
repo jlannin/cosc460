@@ -19,6 +19,7 @@ public class HashEquiJoin extends Operator {
      */
     public HashEquiJoin(JoinPredicate p, DbIterator child1, DbIterator child2) {
         // some code goes here
+        throw new UnsupportedOperationException();
     }
 
     public JoinPredicate getJoinPredicate() {
