@@ -1,0 +1,42 @@
+Report for Lab 3
+----------------
+
+After you complete lab 5, please answer the following questions.
+
+1. What is your name?  If you work with a partner, be sure to write both of your names.
+
+	(Replace this text with your answer)
+
+2. What did you think of this assignment?
+
+	(Replace this text with your answer)
+
+3. What was the hardest part of this assignment?
+
+	(Replace this text with your answer)
+
+4. Describe any missing or incomplete elements of your code.
+
+	(Replace this text with your answer)
+
+5. Roughly how long did you spend working on this lab?
+
+	(Replace this text with your answer)
+
+6. Describe your lock manager implementation.  Here are some specific questions to answer:
+
+a) Where is your lock manager located?  (I.e., is it a separate class, part of BufferPool, etc.)
+
+	(Replace this text with your answer)
+
+b) What specific information do you store and how do you store it?  
+
+	(Replace this text with your answer)
+
+c) Briefly describe what happens when a new transaction requests a page.  I.e., walk thru how the lock manager decides whether or not to grant the request.  Your description should reference the data structures that describe in part (b).
+
+	(Replace this text with your answer)
+
+d) Briefly explain how you manage locks when inserting a tuple into a HeapFile.  In particular, how do you acquire/release locks when looking for a page to insert.
+
+	(Replace this text with your answer)
