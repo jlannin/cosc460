@@ -155,7 +155,7 @@ public class HeapFile implements DbFile {
     	while (i < numPages())
     	{
     		HeapPageId currentid = new HeapPageId(tableid, i);
-    		currpage = (HeapPage) Database.getBufferPool().getPage(tid, currentid, null);
+    		currpage = (HeapPage) Database.getBufferPool().getPage(tid, currentid, Permissions.READ_WRITE);
     		if (currpage.getNumEmptySlots() > 0)
     		{
     			currpage.insertTuple(t);
@@ -185,7 +185,7 @@ public class HeapFile implements DbFile {
     	}
         RecordId rec = t.getRecordId();
         PageId delpageid = rec.getPageId();
-        HeapPage delpage = (HeapPage) Database.getBufferPool().getPage(tid, delpageid, null);
+        HeapPage delpage = (HeapPage) Database.getBufferPool().getPage(tid, delpageid, Permissions.READ_WRITE);
         delpage.deleteTuple(t);
         ArrayList<Page> pages = new ArrayList<Page>();
         pages.add(delpage);
@@ -222,7 +222,7 @@ public class HeapFile implements DbFile {
 			{
 				index = 0;
 				HeapPageId currentid = new HeapPageId(tableid, index);
-				currpage = (HeapPage) Database.getBufferPool().getPage(transid, currentid, null);
+				currpage = (HeapPage) Database.getBufferPool().getPage(transid, currentid, Permissions.READ_ONLY);
 				iterup = currpage.iterator();
 				open = true;
 			}
@@ -262,7 +262,7 @@ public class HeapFile implements DbFile {
 	    					return false;
 	    				}
 	    				HeapPageId currentid = new HeapPageId(tableid, index);
-	    				currpage = (HeapPage) Database.getBufferPool().getPage(transid, currentid, null);
+	    				currpage = (HeapPage) Database.getBufferPool().getPage(transid, currentid, Permissions.READ_ONLY);
 	    				iterup = currpage.iterator();
 	    				if (iterup.hasNext() == true)
 	    				{

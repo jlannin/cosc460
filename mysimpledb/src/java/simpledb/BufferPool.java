@@ -35,6 +35,9 @@ public class BufferPool {
 	private int pagespresent;
 	ConcurrentHashMap<PageId, Page> idtopage;
 	ConcurrentHashMap<PageId, Long> idtotime;
+	LockTable lockTable;
+
+
 
 
 	/**
@@ -51,6 +54,8 @@ public class BufferPool {
 		pagespresent = 0;
 		idtopage = new ConcurrentHashMap<PageId, Page>();
 		idtotime = new ConcurrentHashMap<PageId, Long>();
+		lockTable = new LockTable();
+
 	}
 
 	public static int getPageSize() {
@@ -77,11 +82,12 @@ public class BufferPool {
 	 * @param pid  the ID of the requested page
 	 * @param perm the requested permissions on the page
 	 */
-	public Page getPage(TransactionId tid, PageId pid, Permissions perm)
+	public synchronized Page getPage(TransactionId tid, PageId pid, Permissions perm)
 			throws TransactionAbortedException, DbException {
 		if(idtopage.containsKey(pid))
 		{
 			idtotime.put(pid, new Long(System.currentTimeMillis()));
+			acquireLock(tid, pid, perm);
 			return idtopage.get(pid);
 		}
 		else
@@ -97,10 +103,226 @@ public class BufferPool {
 			idtopage.put(pid, newpage);
 			idtotime.put(pid, new Long(System.currentTimeMillis()));
 			pagespresent++;
+			acquireLock(tid, pid, perm);
 			return newpage;
-
 		}
 	}
+
+	private void acquireLock(TransactionId tid, PageId pid, Permissions perm)
+	{
+		boolean waiting = true;
+		boolean noexclusive = true;
+		boolean allgranted = true;
+		if(holdsLock(tid, pid))
+		{
+			if(perm.equals(Permissions.READ_ONLY))
+			{
+				waiting = false;
+			}
+			else //read/write
+			{
+				synchronized(lockTable)
+				{
+					LockRequest req = lockTable.tableEntries.get(pid);
+					if(req.getTransactionId().equals(tid)) //if not first one then upgrade
+					{
+						if(req.shared())  //have read only lock, need to upgrade
+						{
+							if(req.next() != null && req.next().granted()) //next one is granted
+							{
+								lockTable.tableEntries.put(pid, req.next()); //remove first entry
+								req = req.next();
+								while (req.next() != null && req.next().granted)
+								{
+									req = req.next();
+								}
+								//req.next is not granted we want to insert here
+								LockRequest newreq = new LockRequest(tid, true, perm);
+								newreq.setNext(req.next());
+								req.setNext(newreq);
+							}
+						}
+						else //already have read/write lock
+						{
+							waiting = false;
+						}
+					}
+					else
+					{ //can't have read/write lock here
+						while(!req.next().getTransactionId().equals(tid)) //find this request
+						{
+							req = req.next();
+						}
+						req.setNext(req.next().next());//remove current request
+						while(req.next() != null && req.next().granted() != false) //find spot before requests without lock
+						{
+							req = req.next();
+						}
+						LockRequest newreq = new LockRequest(tid, true, perm);
+						newreq.setNext(req.next());
+						req.setNext(newreq);
+					}
+				}
+			}
+			//insert after all read only access in queue
+		}
+		else
+		{
+			//check if no locks held on page
+			synchronized(lockTable)
+			{
+				if(!lockTable.tableEntries.containsKey(pid))
+				{
+					lockTable.tableEntries.put(pid, new LockRequest(tid, true, perm));
+					if(lockTable.heldLocks.containsKey(tid))
+					{
+						LockNode ln = lockTable.heldLocks.get(tid);
+						while(ln.next() != null)
+						{
+							ln = ln.next();
+						}
+						ln.setNext(new LockNode(pid, perm));
+					}
+					else
+					{
+						lockTable.heldLocks.put(tid, new LockNode(pid, perm));
+					}
+					waiting = false;
+				}
+				//if locks exist, add new entries
+				else
+				{
+					LockRequest lr = lockTable.tableEntries.get(pid);
+					if(!lr.shared())
+					{
+						noexclusive = false;
+					}
+					if(!lr.granted())
+					{
+						allgranted = false;
+					}
+					while(lr.next() != null)
+					{
+						if(!lr.shared())
+						{
+							noexclusive = false;
+						}
+						if(!lr.granted())
+						{
+							allgranted = false;
+						}
+					}
+					lr.setNext(new LockRequest(tid, false, perm));
+					if (allgranted && noexclusive && perm.equals(Permissions.READ_ONLY))
+					{
+						lr.next().setGranted(true);
+						if(lockTable.heldLocks.containsKey(tid))
+						{
+							LockNode ln = lockTable.heldLocks.get(tid);
+							while(ln.next() != null)
+							{
+								ln = ln.next();
+							}
+							ln.setNext(new LockNode(pid, perm));
+						}
+						else
+						{
+							lockTable.heldLocks.put(tid, new LockNode(pid, perm));
+						}
+						waiting = false;
+					}	
+				}
+			}
+		}
+
+		//now lets start waiting for the lock
+
+		if(perm.equals(Permissions.READ_ONLY))
+		{
+			//if read only then we need to make sure that every request before this one
+			//is also a shared lock and has been granted
+			while (waiting)
+			{
+				allgranted = true;
+				noexclusive = true;
+				LockRequest req = lockTable.tableEntries.get(pid);
+				synchronized (lockTable) 
+				{
+					noexclusive = true;
+					allgranted = true;
+					while(noexclusive && !req.getTransactionId().equals(tid))
+					{
+						if(!req.granted())
+						{
+							allgranted = false;
+						}
+						if(!req.shared())
+						{
+							noexclusive = false;
+						}
+					}
+					if (allgranted && noexclusive)
+					{
+						req.setGranted(true);
+						if(lockTable.heldLocks.containsKey(tid))
+						{
+							LockNode ln = lockTable.heldLocks.get(tid);
+							while(ln.next() != null)
+							{
+								ln = ln.next();
+							}
+							ln.setNext(new LockNode(pid, perm));
+						}
+						else
+						{
+							lockTable.heldLocks.put(tid, new LockNode(pid, perm));
+						}
+						waiting = false;
+					}				
+				}
+				if (waiting) {
+					try {
+						Thread.sleep(1);
+					} catch (InterruptedException ignored) { }
+				}
+			}
+		}
+		else
+		{
+			//if exclusive lock, then we need to make sure that there are no other requests before this one
+			while (waiting) 
+			{	
+				synchronized (lockTable) 
+				{
+					LockRequest req = lockTable.tableEntries.get(pid);
+					if(req.getTransactionId().equals(tid))
+					{
+						req.setGranted(true);
+						if(lockTable.heldLocks.containsKey(tid))
+						{
+							LockNode ln = lockTable.heldLocks.get(tid);
+							while(ln.next() != null)
+							{
+								ln = ln.next();
+							}
+							ln.setNext(new LockNode(pid, perm));
+						}
+						else
+						{
+							lockTable.heldLocks.put(tid, new LockNode(pid, perm));
+						}
+						waiting = false;
+					}				
+				}
+				if (waiting) {
+					try {
+						Thread.sleep(1);
+					} catch (InterruptedException ignored) { }
+				}
+			}
+		}
+	}
+
 
 	/**
 	 * Releases the lock on a page.
@@ -112,9 +334,55 @@ public class BufferPool {
 	 * @param pid the ID of the page to unlock
 	 */
 	public void releasePage(TransactionId tid, PageId pid) {
-		// some code goes here
-		// not necessary for lab1|lab2|lab3|lab4                                                         // cosc460
+		synchronized (lockTable) {
+
+			//Update heldLocks
+			LockNode ln = lockTable.heldLocks.get(tid);
+			if(ln.getPageId().equals(pid)) //first entry
+			{
+				if(ln.next() == null)
+				{
+					lockTable.heldLocks.remove(tid);
+				}
+				else
+				{
+					lockTable.heldLocks.put(tid, ln.next());
+				}
+			}
+			else
+			{
+				while(!ln.next().getPageId().equals(pid))
+				{
+					ln = ln.next();
+				}
+				ln.setNext(ln.next().next());
+			}
+
+			// update lockEntries
+			LockRequest lr = lockTable.tableEntries.get(pid);
+			if(lr.getTransactionId().equals(tid)) //first entry
+			{
+				if(lr.next() == null)
+				{
+					lockTable.tableEntries.remove(pid);
+				}
+				else
+				{
+					lockTable.tableEntries.put(pid, lr.next());
+				}
+			}
+			else
+			{
+				while(!lr.next().getTransactionId().equals(tid))
+				{
+					lr = lr.next();
+				}
+				lr.setNext(lr.next().next());
+			}
+
+		}
 	}
+
 
 	/**
 	 * Release all locks associated with a given transaction.
@@ -130,9 +398,21 @@ public class BufferPool {
 	 * Return true if the specified transaction has a lock on the specified page
 	 */
 	public boolean holdsLock(TransactionId tid, PageId p) {
-		// some code goes here
-		// not necessary for lab1|lab2|lab3|lab4                                                         // cosc460
-		return false;
+		synchronized (lockTable) {
+			if(lockTable.heldLocks.containsKey(tid)) //
+			{
+				LockNode lock = lockTable.heldLocks.get(tid);
+				while (lock != null)
+				{
+					if(lock.getPageId().equals(p)) //only added to heldLocks once the Transaction has the lock
+					{
+						return true;
+					}
+					lock = lock.next();
+				}
+			}
+			return false;
+		}
 	}
 
 	/**
@@ -312,4 +592,99 @@ public class BufferPool {
 		// not necessary for lab1
 	}
 
+	class LockTable
+	{
+		ConcurrentHashMap<PageId, LockRequest> tableEntries;
+		ConcurrentHashMap<TransactionId, LockNode> heldLocks;
+
+		public LockTable()
+		{
+			tableEntries = new ConcurrentHashMap<PageId, LockRequest>();
+			heldLocks = new ConcurrentHashMap<TransactionId, LockNode>();
+		}
+	}
+	class LockRequest
+	{
+		private boolean granted;
+		private Permissions perm;
+		private TransactionId tid;
+		private LockRequest next;
+
+		public LockRequest(TransactionId tid, boolean granted, Permissions perm)
+		{
+			this.granted = granted;
+			this.perm = perm;
+			this.tid = tid;
+			next = null;
+		}
+
+		public TransactionId getTransactionId()
+		{
+			return tid;
+		}
+
+		public boolean granted()
+		{
+			return granted;
+		}
+
+		public boolean shared()
+		{
+			return (perm.equals(Permissions.READ_ONLY));
+		}
+
+		public void setGranted(boolean g)
+		{
+			granted  = g;
+		}
+
+		public void setShared(Permissions p)
+		{
+			perm = p;
+		}
+
+		public LockRequest next()
+		{
+			return next;
+		}
+
+		public void setNext(LockRequest next)
+		{
+			this.next = next;
+		}
+	}
+
+	class LockNode
+	{
+		private PageId pid;
+		private LockNode next;
+		private Permissions perm;
+
+		public LockNode(PageId pid, Permissions perm)
+		{
+			this.pid = pid;
+			next = null;
+			this.perm = perm;
+		}
+
+		public PageId getPageId()
+		{
+			return pid;
+		}
+
+		public LockNode next()
+		{
+			return next;
+		}
+
+		public void setNext(LockNode next)
+		{
+			this.next = next;
+		}
+
+		public Permissions getPermission()
+		{
+			return perm;
+		}
+	}
 }
