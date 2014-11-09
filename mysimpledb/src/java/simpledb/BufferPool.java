@@ -211,6 +211,7 @@ public class BufferPool {
 						{
 							allgranted = false;
 						}
+						lr = lr.next();
 					}
 					lr.setNext(new LockRequest(tid, false, perm));
 					if (allgranted && noexclusive && perm.equals(Permissions.READ_ONLY))
@@ -260,6 +261,7 @@ public class BufferPool {
 						{
 							noexclusive = false;
 						}
+						req = req.next();
 					}
 					if (allgranted && noexclusive)
 					{
