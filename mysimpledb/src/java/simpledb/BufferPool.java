@@ -113,6 +113,7 @@ public class BufferPool {
 		boolean waiting = true;
 		boolean noexclusive = true;
 		boolean allgranted = true;
+		//does this transaction already hold the lock?
 		if(holdsLock(tid, pid))
 		{
 			if(perm.equals(Permissions.READ_ONLY))
@@ -166,7 +167,7 @@ public class BufferPool {
 			}
 			//insert after all read only access in queue
 		}
-		else
+		else //transaction doesn't already hold lock
 		{
 			//check if no locks held on page
 			synchronized(lockTable)
@@ -326,6 +327,7 @@ public class BufferPool {
 	}
 
 
+
 	/**
 	 * Releases the lock on a page.
 	 * Calling this is very risky, and may result in wrong behavior. Think hard
@@ -453,14 +455,7 @@ public class BufferPool {
 		}
 		DbFile dbdel = Database.getCatalog().getDatabaseFile(tableId);
 		ArrayList<Page> pages = dbdel.insertTuple(tid, t);
-		for (int i = 0; i < pages.size(); i ++)
-		{
-			Page dirpage = pages.get(i);
-			dirpage.markDirty(true, tid);
-			PageId dirid = dirpage.getId();
-			idtopage.put(dirid, dirpage);
-			idtotime.put(dirid, new Long(System.currentTimeMillis()));
-		}
+		insertInPool(pages, tid);
 	}
 
 	/**
@@ -486,13 +481,27 @@ public class BufferPool {
 		PageId delpageid = rec.getPageId();
 		DbFile dbdel = Database.getCatalog().getDatabaseFile(delpageid.getTableId());
 		ArrayList<Page> pages = dbdel.deleteTuple(tid, t);
-		for (int i = 0; i < pages.size(); i ++)
+		insertInPool(pages, tid);
+
+	}
+
+	private void insertInPool(ArrayList<Page> pages, TransactionId tid) throws DbException
+	{
+		synchronized(this)
 		{
-			Page dirpage = pages.get(i);
-			dirpage.markDirty(true, tid);
-			PageId dirid = dirpage.getId();
-			idtopage.put(dirid, dirpage);
-			idtotime.put(dirid, new Long(System.currentTimeMillis()));
+			for (int i = 0; i < pages.size(); i ++)
+			{
+				if (pagespresent == numpages)
+				{
+					evictPage();
+				}
+				Page dirpage = pages.get(i);
+				dirpage.markDirty(true, tid);
+				PageId dirid = dirpage.getId();
+				idtopage.put(dirid, dirpage);
+				idtotime.put(dirid, new Long(System.currentTimeMillis()));
+				numpages++;
+			}
 		}
 	}
 
@@ -530,20 +539,25 @@ public class BufferPool {
 		{
 			throw new IOException("PageId is null!");
 		}
-		if (!idtopage.containsKey(pid))
+		synchronized(this)
 		{
-			throw new IOException("Page not in buffer!");
-		}
-		DbFile dbdel = Database.getCatalog().getDatabaseFile(pid.getTableId());
-		Page flpage = idtopage.get(pid);
-		if (flpage == null)
-		{
-			throw new IOException("Page is null!"); 
-		}
-		if(flpage.isDirty() != null)
-		{
-			dbdel.writePage(flpage);
-			flpage.markDirty(false, new TransactionId());
+
+			if (!idtopage.containsKey(pid))
+			{
+				throw new IOException("Page not in buffer!");
+			}
+			DbFile dbdel = Database.getCatalog().getDatabaseFile(pid.getTableId());
+			Page flpage = idtopage.get(pid);
+
+			if (flpage == null)
+			{
+				throw new IOException("Page is null!"); 
+			}
+			if(flpage.isDirty() != null)
+			{
+				dbdel.writePage(flpage);
+				flpage.markDirty(false, new TransactionId());
+			}
 		}
 	}
 
@@ -561,31 +575,46 @@ public class BufferPool {
 	 */
 	private synchronized void evictPage() throws DbException {
 		// some code goes here
-		Iterator<PageId> iter = (idtotime.keySet()).iterator();
-		if (pagespresent > 0)
+		synchronized(this)
 		{
-			PageId key = iter.next();
-			PageId minkey = key;
-			long mintime = idtotime.get(key);
-			long temptime = idtotime.get(key);
-			while (iter.hasNext())
+			Iterator<PageId> iter = (idtotime.keySet()).iterator();
+			if (pagespresent > 0)
 			{
-				key = iter.next();
-				temptime = idtotime.get(key);
-				if (temptime < mintime)
+				PageId key = iter.next();
+				PageId minkey = key;
+				long mintime = Long.MAX_VALUE;
+				long temptime = idtotime.get(key);
+				if (temptime < mintime && idtopage.get(key).isDirty() == null)
 				{
 					mintime = temptime;
 					minkey = key;
 				}
+				while (iter.hasNext())
+				{
+					key = iter.next();
+					temptime = idtotime.get(key);
+					if (temptime < mintime && idtopage.get(key).isDirty() == null)
+					{
+						mintime = temptime;
+						minkey = key;
+					}
+				}
+				if (mintime == Long.MAX_VALUE)
+				{
+					throw new DbException("All pages dirty!");
+				}
+				else{
+					try {
+						flushPage(minkey);
+					} catch (IOException e) {
+						System.err.println(e.getMessage());
+					}
+
+					idtotime.remove(minkey);
+					idtopage.remove(minkey);
+					pagespresent--;
+				}
 			}
-			try {
-				flushPage(minkey);
-			} catch (IOException e) {
-				System.err.println(e.getMessage());
-			}
-			idtotime.remove(minkey);
-			idtopage.remove(minkey);
-			pagespresent--;
 		}
 		//find least recently used disk
 		//flush page to disk

@@ -155,22 +155,27 @@ public class HeapFile implements DbFile {
     	while (i < numPages())
     	{
     		HeapPageId currentid = new HeapPageId(tableid, i);
-    		currpage = (HeapPage) Database.getBufferPool().getPage(tid, currentid, Permissions.READ_WRITE);
+    		currpage = (HeapPage) Database.getBufferPool().getPage(tid, currentid, Permissions.READ_ONLY);
     		if (currpage.getNumEmptySlots() > 0)
     		{
+    			currpage = (HeapPage) Database.getBufferPool().getPage(tid, currentid, Permissions.READ_WRITE);
     			currpage.insertTuple(t);
     	        pages.add(currpage);
     			return pages;
     		}
+    		Database.getBufferPool().releasePage(tid, currpage.getId());
     		i++;
     	}
     	HeapPageId newid = new HeapPageId(tableid, i);
     	HeapPage newpage = new HeapPage(newid, HeapPage.createEmptyPageData());
     	newpage.insertTuple(t);
+    	synchronized (file) {
     	BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(file, true));
     	bos.write(newpage.getPageData());
     	bos.flush();
-    	Database.getBufferPool().getPage(tid, newid, null); //put new page in buffer
+    	bos.close();
+    	}
+    	Database.getBufferPool().getPage(tid, newid, Permissions.READ_ONLY); //put new page in buffer
     	pages.add(newpage);
     	return pages;
     }
@@ -310,7 +315,6 @@ public class HeapFile implements DbFile {
 	    	nextfound = false;
 	    	open = false;
 	    	open();
-		
 	    }
 
 	    /**
@@ -320,7 +324,6 @@ public class HeapFile implements DbFile {
 	    {
 	    	open = false;
 	    	nextfound = false;
-	    	
 	    }
 	}
     
