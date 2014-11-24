@@ -5,38 +5,73 @@ After you complete lab 5, please answer the following questions.
 
 1. What is your name?  If you work with a partner, be sure to write both of your names.
 
-	(Replace this text with your answer)
+	Justin Lannin
 
 2. What did you think of this assignment?
 
-	(Replace this text with your answer)
+	I think that this was a fun and interesting assingment.
 
 3. What was the hardest part of this assignment?
 
-	(Replace this text with your answer)
+	The hardest part of this assignment was definitely debugging.  With so many different threads it was difficult to determine which
+	thread was changing what.
 
 4. Describe any missing or incomplete elements of your code.
 
-	(Replace this text with your answer)
+	I think that everything should be working now.  I think that I am going to try to add the graph based detection as a challenge.
 
 5. Roughly how long did you spend working on this lab?
 
-	(Replace this text with your answer)
+	I definitely spent a good amount of time on this lab.  I think that for the most part, all bugs were very small in terms of code
+	(I think for one bug I had switched a variable and needed to check one extra condition for everything to work out okay) but it was
+	definitley a challenge to try to find where exactly the bugs were occuring.  I also spent a fair amount of time improving my lock
+	manager so that it was a little bit more efficient and easy to use. 
 
 6. Describe your lock manager implementation.  Here are some specific questions to answer:
 
 a) Where is your lock manager located?  (I.e., is it a separate class, part of BufferPool, etc.)
 
-	(Replace this text with your answer)
+	My Lock manager is located in a LockManager class in BufferPool. It contains the LockRequest and LockNode classes.
 
 b) What specific information do you store and how do you store it?  
 
-	(Replace this text with your answer)
+	My LockManager has two hashmaps in it.  One that keeps track of requests made on a specific page (tableEntries the hashmap from
+	PageIds to linked list of lockRequests) and one that keeps track of which locks a given transaction is waiting for and has (tidLocks mapping 
+	Transaction IDs to LockNodes (each LockNode has a waiting and held set of PageIds)).
 
 c) Briefly describe what happens when a new transaction requests a page.  I.e., walk thru how the lock manager decides whether or not to grant the request.  Your description should reference the data structures that describe in part (b).
 
-	(Replace this text with your answer)
+	Whenever a transaction requests a page it first has to call acquireLock to acquire the lock.  My acquire lock is a little bit more
+	complicated then having a transaction just add itself and check if it can acquire the lock but as a tradeoff it is a bit more efficient,
+	directly assigning the lock whenever it can (on an upgrade or when it is trying to add itself to the request queue). 
 
+	The basic idea is as follows:
+
+	If requesting a read lock
+		If already have lock on page we are done
+		else If no locks are held on page we add granted LockRequest to tableEntries, and add lock to held set of LockNode in tidLocks and are done
+		Else add self to tableEntries. While adding to LinkedList we check:
+			If all requests have been granted and are read only we can immediately grant the read lock, update tidLocks, and are done
+			Else add to waiting set of the transactions LockNode in tidLocks
+		If we are not done, we get and loop through the Linked List of LockRequests of that page from tableEntries and if requests have been granted and are read only then we assign lock and move
+		the lock from waiting to held in LockNode of tidLocks, otherwise we sleep for 10milliseconds and repeat loop.
+
+	else (read/write request)
+		If already have lock
+			If we have read/write lock we are done
+			else if we are the first entry in tableEntries
+				If the next LockRequest holds the lock (we move this request to after all of the LockRequests with granted locks)
+				Else we can just assign the lock now (updating LockNode in tidLocks) and are done
+			else not the first entry
+				Move to after all LockRequests with the lock
+		else if no one has the lock on page, assign lock and we are done
+		else add self to tableEntries, after all LockRequests that have been granted the lock, add lock to waiting set in LockNode in tidLocks
+		If not done, check to see if we are the first entry in tableEntries.  If we are we can assign the lock and get the page, else
+		we sleep for 10 milliseconds and repeat the loop.
+	
 d) Briefly explain how you manage locks when inserting a tuple into a HeapFile.  In particular, how do you acquire/release locks when looking for a page to insert.
 
-	(Replace this text with your answer)
+	A page has to acquire a lock whenever it tries to get a page.  It may just be upgrading a lock that it already has or it is obtaining
+	a new lock.  When it is looking for a page to insert the tuple on, if it acquries a lock on a page and then discovers that it is full,
+	it can immediately release the lock on that page becasue it hasn't done anything to it (no reads or writes).  Once it finds the page
+	that it writes to it doesn't release the lock until it commits.

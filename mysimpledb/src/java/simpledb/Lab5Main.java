@@ -15,7 +15,7 @@ public class Lab5Main {
         // loads the imdb database because each table is big enough to have multiple pages
         Database.getCatalog().loadSchema("imdb.schema");             // file imdb.schema must be in mysimpledb directory
 
-        Lab5Util.runTransactions(new T1(), new T2(), new T3());
+        Lab5Util.runTransactions(new T1(), new T3());
     }
 
     static class T1 extends SimpleDBTransactionThread {
@@ -27,8 +27,8 @@ public class Lab5Main {
             PageId p1 = new HeapPageId(table, 1);
             Database.getBufferPool().getPage(tid, p0, Permissions.READ_ONLY);
             System.out.println("got both locks " + tid);
-            Database.getBufferPool().releasePage(tid, p0);
-            System.out.println("Released!");
+         //   Database.getBufferPool().releasePage(tid, p0);
+           // System.out.println("Released!" + tid);
             
             //Database.getBufferPool().getPage(tid, p0, Permissions.READ_WRITE);
             //System.out.println("got both locks " + tid);
@@ -56,8 +56,8 @@ public class Lab5Main {
             Database.getBufferPool().getPage(tid, p0, Permissions.READ_WRITE);
             */
             System.out.println("got both locks " + tid);
-            Database.getBufferPool().releasePage(tid, p0);
-            System.out.println("Released!");
+            //Database.getBufferPool().releasePage(tid, p0);
+           //7 System.out.println("Released!");
             //Database.getBufferPool().releasePage(tid,  p0);
         }
     }
@@ -69,7 +69,7 @@ public class Lab5Main {
             int table = Database.getCatalog().getTableId("Actor");
             PageId p0 = new HeapPageId(table, 0);
             PageId p1 = new HeapPageId(table, 1);
-            System.out.println(tid);
+            System.out.println(tid + "RW");
             Database.getBufferPool().getPage(tid, p0, Permissions.READ_WRITE);       // creates deadlock w/ T1!
             /*try {
                 Thread.sleep(5);             // pause to encourage deadlock
@@ -78,7 +78,7 @@ public class Lab5Main {
             */
             System.out.println("got both locks " + tid);
             Database.getBufferPool().releasePage(tid, p0);
-            System.out.println("Released!");
+            System.out.println("Released!" + tid);
             //Database.getBufferPool().releasePage(tid,  p0);
         }
     }

@@ -3,6 +3,7 @@ package simpledb;
 import java.io.*;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -84,31 +85,33 @@ public class BufferPool {
 	 */
 	public synchronized Page getPage(TransactionId tid, PageId pid, Permissions perm)
 			throws TransactionAbortedException, DbException {
-		if(idtopage.containsKey(pid))
+		acquireLock(tid, pid, perm);
+		synchronized(lockTable)
 		{
-			idtotime.put(pid, new Long(System.currentTimeMillis()));
-			acquireLock(tid, pid, perm);
-			return idtopage.get(pid);
-		}
-		else
-		{
-			if (pagespresent == numpages)
+			if(idtopage.containsKey(pid))
 			{
-				evictPage();
+				idtotime.put(pid, new Long(System.currentTimeMillis()));
+				return idtopage.get(pid);
 			}
-			int tableid = pid.getTableId();
-			Catalog cat = Database.getCatalog();
-			DbFile dbfile = cat.getDatabaseFile(tableid);
-			Page newpage = dbfile.readPage(pid);
-			idtopage.put(pid, newpage);
-			idtotime.put(pid, new Long(System.currentTimeMillis()));
-			pagespresent++;
-			acquireLock(tid, pid, perm);
-			return newpage;
+			else
+			{
+				if (pagespresent == numpages)
+				{
+					evictPage();
+				}
+				int tableid = pid.getTableId();
+				Catalog cat = Database.getCatalog();
+				DbFile dbfile = cat.getDatabaseFile(tableid);
+				Page newpage = dbfile.readPage(pid);
+				idtopage.put(pid, newpage);
+				idtotime.put(pid, new Long(System.currentTimeMillis()));
+				pagespresent++;
+				return newpage;
+			}
 		}
 	}
 
-	private void acquireLock(TransactionId tid, PageId pid, Permissions perm)
+	private void acquireLock(TransactionId tid, PageId pid, Permissions perm) throws TransactionAbortedException
 	{
 		boolean waiting = true;
 		boolean noexclusive = true;
@@ -116,34 +119,32 @@ public class BufferPool {
 		//does this transaction already hold the lock?
 		if(holdsLock(tid, pid))
 		{
-			if(perm.equals(Permissions.READ_ONLY))
+			if(perm.equals(Permissions.READ_ONLY)) //no need to upgrade when requesting read only lock
 			{
 				waiting = false;
 			}
-			else //read/write
+			else //read/write requested so we might need to upgrade
 			{
 				synchronized(lockTable)
 				{
 					LockRequest req = lockTable.tableEntries.get(pid);
-					if(req.getTransactionId().equals(tid)) //if not first one then upgrade
+					//if this transaction has the first lock, then it is possible to 
+					//upgrade now
+					if(req.getTransactionId().equals(tid))
 					{
-						if(req.shared())  //have read only lock, need to upgrade
+						if(req.shared())  //currently have read only lock, want read/write so need to upgrade
 						{
-							if(req.next() != null && req.next().granted()) //next one is granted
+							if(req.next() != null && req.next().granted()) //next one is granted so we must wait
 							{
 								lockTable.tableEntries.put(pid, req.next()); //remove first entry
-								req = req.next();
-								while (req.next() != null && req.next().granted)
-								{
-									req = req.next();
-								}
-								//req.next is not granted we want to insert here
-								LockRequest newreq = new LockRequest(tid, true, perm);
-								newreq.setNext(req.next());
-								req.setNext(newreq);
+							}
+							else //we can grant the lock right now
+							{
+								req.setShared(perm);
+								waiting = false;
 							}
 						}
-						else //already have read/write lock
+						else //already have read/write lock so we are done
 						{
 							waiting = false;
 						}
@@ -155,13 +156,17 @@ public class BufferPool {
 							req = req.next();
 						}
 						req.setNext(req.next().next());//remove current request
+					}
+					if(waiting) //if we are still waiting we need to now add the request for the upgrade
+					{
 						while(req.next() != null && req.next().granted() != false) //find spot before requests without lock
 						{
 							req = req.next();
 						}
-						LockRequest newreq = new LockRequest(tid, true, perm);
+						LockRequest newreq = new LockRequest(tid, false, perm);
 						newreq.setNext(req.next());
 						req.setNext(newreq);
+						lockTable.tidLocks.get(tid).startWaiting(pid);
 					}
 				}
 			}
@@ -169,31 +174,22 @@ public class BufferPool {
 		}
 		else //transaction doesn't already hold lock
 		{
-			//check if no locks held on page
 			synchronized(lockTable)
 			{
-				if(!lockTable.tableEntries.containsKey(pid))
+				//check if no locks are currently held on page
+				if(!lockTable.tableEntries.containsKey(pid)) //no locks on page, we can immediately grant it
 				{
 					lockTable.tableEntries.put(pid, new LockRequest(tid, true, perm));
-					if(lockTable.heldLocks.containsKey(tid))
-					{
-						LockNode ln = lockTable.heldLocks.get(tid);
-						while(ln.next() != null)
-						{
-							ln = ln.next();
-						}
-						ln.setNext(new LockNode(pid, perm));
-					}
-					else
-					{
-						lockTable.heldLocks.put(tid, new LockNode(pid, perm));
-					}
+					createLockNode(tid, pid);
 					waiting = false;
 				}
-				//if locks exist, add new entries
+				//locks are held on the page
 				else
 				{
 					LockRequest lr = lockTable.tableEntries.get(pid);
+					//the basic idea here is that if all of the locks held on the
+					//page so far have been granted and are read only (shared),
+					//then we can assign a read lock right away
 					if(!lr.shared())
 					{
 						noexclusive = false;
@@ -214,23 +210,13 @@ public class BufferPool {
 						}
 						lr = lr.next();
 					}
-					lr.setNext(new LockRequest(tid, false, perm));
+					lr.setNext(new LockRequest(tid, false, perm)); //set not granted by default
+					//if asking for a read only lock, all have been granted, and all are read only
+					//then we can assign the lock
 					if (allgranted && noexclusive && perm.equals(Permissions.READ_ONLY))
 					{
 						lr.next().setGranted(true);
-						if(lockTable.heldLocks.containsKey(tid))
-						{
-							LockNode ln = lockTable.heldLocks.get(tid);
-							while(ln.next() != null)
-							{
-								ln = ln.next();
-							}
-							ln.setNext(new LockNode(pid, perm));
-						}
-						else
-						{
-							lockTable.heldLocks.put(tid, new LockNode(pid, perm));
-						}
+						createLockNode(tid, pid);
 						waiting = false;
 					}	
 				}
@@ -239,8 +225,15 @@ public class BufferPool {
 
 		//now lets start waiting for the lock
 
+		if(waiting) //first we should add a waiting request to tidLocks
+		{
+			createWaitingLockNode(tid, pid);
+		}
+		int secondsWaited = 0;
+		int deadLock = 1000;
 		if(perm.equals(Permissions.READ_ONLY))
 		{
+			//need to add to end of the heldlocks table
 			//if read only then we need to make sure that every request before this one
 			//is also a shared lock and has been granted
 			while (waiting)
@@ -264,28 +257,22 @@ public class BufferPool {
 						}
 						req = req.next();
 					}
-					if (allgranted && noexclusive)
+					if (allgranted && noexclusive) //if all previously granted and read only
 					{
 						req.setGranted(true);
-						if(lockTable.heldLocks.containsKey(tid))
-						{
-							LockNode ln = lockTable.heldLocks.get(tid);
-							while(ln.next() != null)
-							{
-								ln = ln.next();
-							}
-							ln.setNext(new LockNode(pid, perm));
-						}
-						else
-						{
-							lockTable.heldLocks.put(tid, new LockNode(pid, perm));
-						}
+						LockNode ln = lockTable.tidLocks.get(tid);
+						ln.finishWaiting(pid);
 						waiting = false;
 					}				
 				}
 				if (waiting) {
+					if(secondsWaited == deadLock)
+					{
+						throw new TransactionAbortedException();
+					}
 					try {
-						Thread.sleep(1);
+						Thread.sleep(10);
+						secondsWaited += 10;
 					} catch (InterruptedException ignored) { }
 				}
 			}
@@ -298,35 +285,57 @@ public class BufferPool {
 				synchronized (lockTable) 
 				{
 					LockRequest req = lockTable.tableEntries.get(pid);
-					if(req.getTransactionId().equals(tid))
+					if(req.getTransactionId().equals(tid)) //are we the first entry? If not go to sleep
 					{
 						req.setGranted(true);
-						if(lockTable.heldLocks.containsKey(tid))
-						{
-							LockNode ln = lockTable.heldLocks.get(tid);
-							while(ln.next() != null)
-							{
-								ln = ln.next();
-							}
-							ln.setNext(new LockNode(pid, perm));
-						}
-						else
-						{
-							lockTable.heldLocks.put(tid, new LockNode(pid, perm));
-						}
+						LockNode ln = lockTable.tidLocks.get(tid);
+						ln.acquireLock(pid);
 						waiting = false;
 					}				
 				}
 				if (waiting) {
+					if(secondsWaited == deadLock)
+					{
+						throw new TransactionAbortedException();
+					}
 					try {
-						Thread.sleep(1);
+						Thread.sleep(10);
+						secondsWaited += 10;
 					} catch (InterruptedException ignored) { }
 				}
 			}
 		}
 	}
 
+	private void createLockNode(TransactionId tid, PageId pid)
+	{
+		if(lockTable.tidLocks.containsKey(tid))
+		{
+			LockNode ln = lockTable.tidLocks.get(tid);
+			ln.acquireLock(pid);
+		}
+		else
+		{
+			LockNode ln = new LockNode();
+			ln.acquireLock(pid);
+			lockTable.tidLocks.put(tid, ln);
+		}	
+	}
 
+	private void createWaitingLockNode(TransactionId tid, PageId pid)
+	{
+		if(lockTable.tidLocks.containsKey(tid))
+		{
+			LockNode ln = lockTable.tidLocks.get(tid);
+			ln.startWaiting(pid);
+		}
+		else
+		{
+			LockNode ln = new LockNode();
+			ln.startWaiting(pid);
+			lockTable.tidLocks.put(tid, ln);
+		}	
+	}
 
 	/**
 	 * Releases the lock on a page.
@@ -341,49 +350,35 @@ public class BufferPool {
 		synchronized (lockTable) {
 
 			//Update heldLocks
-			LockNode ln = lockTable.heldLocks.get(tid);
-			if(ln.getPageId().equals(pid)) //first entry
+			LockNode ln = lockTable.tidLocks.get(tid);
+			if(ln != null)
 			{
-				if(ln.next() == null)
-				{
-					lockTable.heldLocks.remove(tid);
-				}
-				else
-				{
-					lockTable.heldLocks.put(tid, ln.next());
-				}
+				ln.releaseLocks(pid);
 			}
-			else
-			{
-				while(!ln.next().getPageId().equals(pid))
-				{
-					ln = ln.next();
-				}
-				ln.setNext(ln.next().next());
-			}
-
 			// update lockEntries
 			LockRequest lr = lockTable.tableEntries.get(pid);
-			if(lr.getTransactionId().equals(tid)) //first entry
+			if (lr != null)
 			{
-				if(lr.next() == null)
+				if(lr.getTransactionId().equals(tid)) //first entry
 				{
-					lockTable.tableEntries.remove(pid);
+					if(lr.next() == null)
+					{
+						lockTable.tableEntries.remove(pid);
+					}
+					else
+					{
+						lockTable.tableEntries.put(pid, lr.next());
+					}
 				}
 				else
 				{
-					lockTable.tableEntries.put(pid, lr.next());
+					while(!lr.next().getTransactionId().equals(tid))
+					{
+						lr = lr.next();
+					}
+					lr.setNext(lr.next().next());
 				}
 			}
-			else
-			{
-				while(!lr.next().getTransactionId().equals(tid))
-				{
-					lr = lr.next();
-				}
-				lr.setNext(lr.next().next());
-			}
-
 		}
 	}
 
@@ -394,8 +389,7 @@ public class BufferPool {
 	 * @param tid the ID of the transaction requesting the unlock
 	 */
 	public void transactionComplete(TransactionId tid) throws IOException {
-		// some code goes here
-		// not necessary for lab1|lab2|lab3|lab4                                                         // cosc460
+		transactionComplete(tid, true);
 	}
 
 	/**
@@ -403,17 +397,10 @@ public class BufferPool {
 	 */
 	public boolean holdsLock(TransactionId tid, PageId p) {
 		synchronized (lockTable) {
-			if(lockTable.heldLocks.containsKey(tid)) //
+			if(lockTable.tidLocks.containsKey(tid)) //
 			{
-				LockNode lock = lockTable.heldLocks.get(tid);
-				while (lock != null)
-				{
-					if(lock.getPageId().equals(p)) //only added to heldLocks once the Transaction has the lock
-					{
-						return true;
-					}
-					lock = lock.next();
-				}
+				LockNode lock = lockTable.tidLocks.get(tid);
+				return lock.holdsLock(p);
 			}
 			return false;
 		}
@@ -428,8 +415,57 @@ public class BufferPool {
 	 */
 	public void transactionComplete(TransactionId tid, boolean commit)
 			throws IOException {
-		// some code goes here
-		// not necessary for lab1|lab2|lab3|lab4                                                         // cosc460
+		if(commit)
+		{
+			flushPages(tid);	
+		}
+		else
+		{
+			undo(tid);
+		}
+		releaseLocks(tid);
+	}
+
+	private void releaseLocks(TransactionId tid)
+	{
+		LockNode node = lockTable.tidLocks.get(tid);
+		if(node != null)
+		{
+			//release waiting
+			Iterator<PageId> iter = node.waitingIter();
+			releaseHelp(iter, tid);
+			//release held
+			iter = node.heldIter();
+			releaseHelp(iter, tid);
+		}
+	}
+
+	private void releaseHelp(Iterator<PageId> iter, TransactionId tid)
+	{
+		HashSet<PageId> pidsToRemove = new HashSet<PageId>();
+		while(iter.hasNext())
+		{
+			pidsToRemove.add(iter.next());
+
+		}
+		iter = pidsToRemove.iterator();
+		while(iter.hasNext())
+		{
+			releasePage(tid,iter.next());
+		}
+	}
+
+	private void undo(TransactionId tid)
+	{
+		Iterator<PageId> iter = (idtopage.keySet()).iterator();
+		while(iter.hasNext())
+		{
+			PageId key = iter.next();
+			if(tid.equals(idtopage.get(key).isDirty()))
+			{
+				discardPage(key);
+			}
+		}
 	}
 
 	/**
@@ -498,9 +534,13 @@ public class BufferPool {
 				Page dirpage = pages.get(i);
 				dirpage.markDirty(true, tid);
 				PageId dirid = dirpage.getId();
+				if(!idtopage.containsKey(dirid))
+				{
+					pagespresent++;
+				}
 				idtopage.put(dirid, dirpage);
 				idtotime.put(dirid, new Long(System.currentTimeMillis()));
-				numpages++;
+				
 			}
 		}
 	}
@@ -525,8 +565,9 @@ public class BufferPool {
 	 * cache.
 	 */
 	public synchronized void discardPage(PageId pid) {
-		// some code goes here
-		// only necessary for lab6                                                                            // cosc460
+		idtotime.remove(pid);
+		idtopage.remove(pid);
+		numpages--;
 	}
 
 	/**
@@ -556,7 +597,7 @@ public class BufferPool {
 			if(flpage.isDirty() != null)
 			{
 				dbdel.writePage(flpage);
-				flpage.markDirty(false, new TransactionId());
+				flpage.markDirty(false, null);
 			}
 		}
 	}
@@ -565,8 +606,15 @@ public class BufferPool {
 	 * Write all pages of the specified transaction to disk.
 	 */
 	public synchronized void flushPages(TransactionId tid) throws IOException {
-		// some code goes here
-		// not necessary for lab1|lab2|lab3|lab4                                                         // cosc460
+		Iterator<PageId> iter = (idtopage.keySet()).iterator();
+		while(iter.hasNext())
+		{
+			PageId key = iter.next();
+			if(tid.equals(idtopage.get(key).isDirty()))
+			{
+				flushPage(key);
+			}
+		}
 	}
 
 	/**
@@ -574,7 +622,6 @@ public class BufferPool {
 	 * Flushes the page to disk to ensure dirty pages are updated on disk.
 	 */
 	private synchronized void evictPage() throws DbException {
-		// some code goes here
 		synchronized(this)
 		{
 			Iterator<PageId> iter = (idtotime.keySet()).iterator();
@@ -583,11 +630,13 @@ public class BufferPool {
 				PageId key = iter.next();
 				PageId minkey = key;
 				long mintime = Long.MAX_VALUE;
+				boolean found = false;
 				long temptime = idtotime.get(key);
 				if (temptime < mintime && idtopage.get(key).isDirty() == null)
 				{
 					mintime = temptime;
 					minkey = key;
+					found = true;
 				}
 				while (iter.hasNext())
 				{
@@ -597,9 +646,10 @@ public class BufferPool {
 					{
 						mintime = temptime;
 						minkey = key;
+						found = true;
 					}
 				}
-				if (mintime == Long.MAX_VALUE)
+				if (!found)
 				{
 					throw new DbException("All pages dirty!");
 				}
@@ -626,13 +676,14 @@ public class BufferPool {
 	class LockTable
 	{
 		ConcurrentHashMap<PageId, LockRequest> tableEntries;
-		ConcurrentHashMap<TransactionId, LockNode> heldLocks;
+		ConcurrentHashMap<TransactionId, LockNode> tidLocks;
 
 		public LockTable()
 		{
 			tableEntries = new ConcurrentHashMap<PageId, LockRequest>();
-			heldLocks = new ConcurrentHashMap<TransactionId, LockNode>();
+			tidLocks = new ConcurrentHashMap<TransactionId, LockNode>();
 		}
+
 	}
 	class LockRequest
 	{
@@ -687,35 +738,61 @@ public class BufferPool {
 
 	class LockNode
 	{
-		private PageId pid;
-		private LockNode next;
-		private Permissions perm;
+		private HashSet<PageId> holding;
+		private HashSet<PageId> waiting;
 
-		public LockNode(PageId pid, Permissions perm)
+		public LockNode()
 		{
-			this.pid = pid;
-			next = null;
-			this.perm = perm;
+			holding = new HashSet<PageId>();
+			waiting = new HashSet<PageId>();
 		}
 
-		public PageId getPageId()
+		public boolean holdsLock(PageId pid)
 		{
-			return pid;
+			return holding.contains(pid);
 		}
 
-		public LockNode next()
+		public void acquireLock(PageId pid)
 		{
-			return next;
+			holding.add(pid);
 		}
 
-		public void setNext(LockNode next)
+		public void releaseLocks(PageId pid)
 		{
-			this.next = next;
+			waiting.remove(pid);
+			holding.remove(pid);
 		}
 
-		public Permissions getPermission()
+		public void startWaiting(PageId pid)
 		{
-			return perm;
+			if(holding.contains(pid))
+			{
+				holding.remove(pid);
+			}
+			waiting.add(pid);
+		}
+
+		public void finishWaiting(PageId pid)
+		{
+			if(waiting.contains(pid))
+			{
+				waiting.remove(pid);
+				holding.add(pid);
+			}
+			else
+			{
+				throw new RuntimeException("Not waiting on Lock for this page!");
+			}
+		}
+
+		public Iterator<PageId> waitingIter()
+		{
+			return waiting.iterator();
+		}
+
+		public Iterator<PageId> heldIter()
+		{
+			return holding.iterator();
 		}
 	}
 }

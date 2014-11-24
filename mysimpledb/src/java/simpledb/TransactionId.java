@@ -22,6 +22,10 @@ public class TransactionId implements Serializable {
     }
 
     public boolean equals(Object tid) {
+    	if (tid == null)
+    	{
+    		return false;
+    	}
         return ((TransactionId) tid).myid == myid;
     }
 
