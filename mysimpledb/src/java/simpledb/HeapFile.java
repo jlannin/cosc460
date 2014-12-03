@@ -149,7 +149,6 @@ public class HeapFile implements DbFile {
     	}
         //loop through the pages and look for open slot
     	int i = 0;
-    	boolean found = false;
     	HeapPage currpage;
     	ArrayList<Page> pages = new ArrayList<Page>();
     	while (i < numPages())
@@ -163,19 +162,19 @@ public class HeapFile implements DbFile {
     	        pages.add(currpage);
     			return pages;
     		}
-    		Database.getBufferPool().releasePage(tid, currpage.getId());
+    		//Database.getBufferPool().releasePage(tid, currpage.getId());
     		i++;
     	}
     	HeapPageId newid = new HeapPageId(tableid, i);
     	HeapPage newpage = new HeapPage(newid, HeapPage.createEmptyPageData());
-    	newpage.insertTuple(t);
     	synchronized (file) {
     	BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(file, true));
     	bos.write(newpage.getPageData());
     	bos.flush();
     	bos.close();
     	}
-    	Database.getBufferPool().getPage(tid, newid, Permissions.READ_ONLY); //put new page in buffer
+    	Database.getBufferPool().getPage(tid, newid, Permissions.READ_WRITE); //put new page in buffer
+    	newpage.insertTuple(t);
     	pages.add(newpage);
     	return pages;
     }

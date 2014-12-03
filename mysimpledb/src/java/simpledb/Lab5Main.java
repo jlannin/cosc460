@@ -27,8 +27,8 @@ public class Lab5Main {
             PageId p1 = new HeapPageId(table, 1);
             Database.getBufferPool().getPage(tid, p0, Permissions.READ_ONLY);
             System.out.println("got both locks " + tid);
-         //   Database.getBufferPool().releasePage(tid, p0);
-           // System.out.println("Released!" + tid);
+       //     Database.getBufferPool().releasePage(tid, p0);
+         //   System.out.println("Released!" + tid);
             
             //Database.getBufferPool().getPage(tid, p0, Permissions.READ_WRITE);
             //System.out.println("got both locks " + tid);
@@ -49,7 +49,7 @@ public class Lab5Main {
             PageId p0 = new HeapPageId(table, 0);
             PageId p1 = new HeapPageId(table, 1);
             System.out.println("I am" + tid);
-            Database.getBufferPool().getPage(tid, p0, Permissions.READ_ONLY);       // creates deadlock w/ T1!
+            Database.getBufferPool().getPage(tid, p0, Permissions.READ_WRITE);       // creates deadlock w/ T1!
             /*try {
                 Thread.sleep(5);             // pause to encourage deadlock
             } catch (InterruptedException ignored) { }
@@ -70,7 +70,7 @@ public class Lab5Main {
             PageId p0 = new HeapPageId(table, 0);
             PageId p1 = new HeapPageId(table, 1);
             System.out.println(tid + "RW");
-            Database.getBufferPool().getPage(tid, p0, Permissions.READ_WRITE);       // creates deadlock w/ T1!
+            Database.getBufferPool().getPage(tid, p0, Permissions.READ_ONLY);       // creates deadlock w/ T1!
             /*try {
                 Thread.sleep(5);             // pause to encourage deadlock
             } catch (InterruptedException ignored) { }
