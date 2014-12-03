@@ -1,0 +1,63 @@
+Report for Lab 6
+----------------
+
+Exercise 1.
+
+1. Briefly explain how logging is done in SimpleDB by describing when log records are written to the log.  Use Eclipse search tools to find all uses of the LogFile methods in the SimpleDB source code.
+
+    <Replace this text with your answer>
+
+
+2. Where is LogFile.force called?  You should include usages inside other LogFile methods.  For each usage, why is it important that force is called?
+
+    <Replace this text with your answer>
+
+
+3. Where is setBeforeImage image called?  
+
+    <Replace this text with your answer>
+
+
+Exercise 4.
+
+In answering the next few questions, oncy include method calls in the source code; method calls in the test code can be ignored.
+
+4. Where is BufferPool.flushPage called?  
+    
+    <Replace this text with your answer>
+
+5. Where is BufferPool.flushPages(tid) called?
+
+    <Replace this text with your answer>
+
+6. Where is BufferPool.flushAllPages called?
+
+    <Replace this text with your answer>
+
+7. To support a NO FORCE, STEAL policy, describe exactly when/where pages should be flushed to disk.
+
+    <Replace this text with your answer>
+
+
+After you complete the lab, please answer the following questions.  
+
+8. What is your name?  If you work with a partner, be sure to write both of your names.
+
+    <Replace this text with your answer>
+
+9. What did you think of this assignment?
+
+    <Replace this text with your answer>
+
+10. What was the hardest part of this assignment?
+
+    <Replace this text with your answer>
+
+11. Describe any missing or incomplete elements of your code.
+
+    <Replace this text with your answer>
+
+12. Roughly how long did you spend working on this lab?
+
+    <Replace this text with your answer>
+
