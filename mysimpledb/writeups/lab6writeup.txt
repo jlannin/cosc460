@@ -5,40 +5,13 @@ Exercise 1.
 
 1. Briefly explain how logging is done in SimpleDB by describing when log records are written to the log.  Use Eclipse search tools to find all uses of the LogFile methods in the SimpleDB source code.
 
-	First a new LogFile is created in the constructor of the database.
-
-    void preAppend() throws IOException 
-
-    private void checkActive(TransactionId tid, boolean shouldBeActive) throws IOException
-     
-    public synchronized void logXactionBegin(TransactionId tid)
-
-    public synchronized void logCommit(TransactionId tid) throws IOException {
-     
-    public void logAbort(TransactionId tid) throws IOException {
-       
-    public synchronized void logAbort(Long tid) throws IOException
-     
-    public synchronized void logWrite(TransactionId tid, Page before,
-
-    public synchronized void logCLR(TransactionId tid, Page after)
-     
-    public synchronized void logCLR(Long tid, Page after)
-     
-    static void writePageData(RandomAccessFile raf, Page p) throws IOException {  
-
-    static Page readPageData(RandomAccessFile raf) throws IOException {
-
-    public void logCheckpoint() throws IOException
-
-    public synchronized void logTruncate() throws IOException
-
-    public synchronized void shutdown() 
-
-    public void recover() throws IOException 
-
-    public synchronized void force() throws IOException
-
+	First a new LogFile is created in the constructor of the database.  Then a transaction writes a "begin" record to the log when it is starting up (in Transaction.start)
+	Whenever we are flushing and updated page, we call LogFile.logWrite to write the "update" record to the log. In flushPage, we also force the log to disk before we flush
+	the page to disk to ensure that we have our write ahead logging. writePageData is called when adding a "CLR" or "Update" record to write before and after images to the log.
+	readPageData is used by print and rollback to read the before images from the log which will be used to overwrite the afterimages. LogFile.logCheckpoint is called during a
+	shutdown to ensure that start up can happen quickly. Finally, when a transaction is committing or aborting, a "commit" (or "abort") record for the transaction is written
+	to the log in Transaction.complete. LogFile.preAppend is used before we write to the log, to ensure that we will be writing to the end of the log.Recovery is called upon a
+	crash, and force is called as described	below to ensure that we have our write ahead logging.
 
 
 2. Where is LogFile.force called?  You should include usages inside other LogFile methods.  For each usage, why is it important that force is called?
@@ -54,14 +27,13 @@ Exercise 1.
 
 	- In LogFile.logAbort and LogFile.Commit
 
-		In these two methods, before we can remove the transaction from the list of active transactions, we have to make sure that we have a record on the disk
-		of why the transaction is no longer active. This will again ensure that if the database crashes we will know what happened to these transactions and why
-		they are no longer active.  
+		These two methods are called from Transaction.transactionComplete where, to maintain write ahead logging, before we can commit or abort the transaction,
+		we must flush the log to the disk.
 
 	- In LogFile.logCheckpoint
 
-		Forcing our log to disk when we add a new checkpoint ensures that our last checkpoint data is saved in case we crash when updating the new checkpoint.
-		This will always ensure that we can at least roll back to the previous checkpoint in the event that something went wrong during this update.
+		Forcing our log to disk when we add a checkpoint ensures that we keep our write ahead logging before we flush all pages to disk during our checkpoint. 
+		This will always ensure that we have all updates and other changes in the log written to disk before any pages are flushed.
 
 3. Where is setBeforeImage image called?  
 
@@ -112,4 +84,3 @@ After you complete the lab, please answer the following questions.
 12. Roughly how long did you spend working on this lab?
 
     <Replace this text with your answer>
-

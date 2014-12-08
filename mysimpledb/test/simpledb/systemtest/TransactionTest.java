@@ -112,7 +112,7 @@ public class TransactionTest extends SimpleDbTestBase {
                         q1.close();
 
                         // delete old values (i.e., just one row) from table
-                        System.out.println(tr + "first checkpoint");
+                        //System.out.println(tr + "first checkpoint");
                         Delete delOp = new Delete(tr.getId(), ss2);
 
                         Query q2 = new Query(delOp, tr.getId());
@@ -121,7 +121,7 @@ public class TransactionTest extends SimpleDbTestBase {
                         q2.next();
                         q2.close();
 
-                        System.out.println(tr + "second checkpoint");
+                        //System.out.println(tr + "second checkpoint");
                         
                         // set up a Set with a tuple that is one higher than the old one.
                         HashSet<Tuple> hs = new HashSet<Tuple>();
@@ -134,18 +134,18 @@ public class TransactionTest extends SimpleDbTestBase {
                         q3.start();
                         q3.next();
                         q3.close();
-                        System.out.println(tr + "third checkpoint");
+                        //System.out.println(tr + "third checkpoint");
 
                         tr.commit();
                         Database.getBufferPool().flushAllPages();
                         break;
                     } catch (TransactionAbortedException te) {
-                        System.out.println("thread " + tr.getId() + " killed");
+                        //System.out.println("thread " + tr.getId() + " killed");
                         // give someone else a chance: abort the transaction
                         tr.transactionComplete(true);
                         latch.stillParticipating();
                     }
-                    System.out.println(tr + " starting over");
+                    //System.out.println(tr + " starting over");
                 }
                 //System.out.println("thread " + id + " done");
             } catch (Exception e) {

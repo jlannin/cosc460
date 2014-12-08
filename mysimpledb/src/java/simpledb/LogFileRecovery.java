@@ -97,7 +97,6 @@ class LogFileRecovery {
 		 * When stopping: when get to transaction begin 
 		 * think about when committed (if not there, if before checkpoint)
 		 */
-		//print();
 		boolean notBegin = true;
 		long rollTid = tidToRollback.getId();
 		long currLoc = readOnlyLog.length();
@@ -120,6 +119,7 @@ class LogFileRecovery {
 
 			switch (type) {
 			case LogType.BEGIN_RECORD:
+				Database.getLogFile().logAbort(tid);
 				notBegin = false;
 				break;
 			case LogType.COMMIT_RECORD:
@@ -130,10 +130,12 @@ class LogFileRecovery {
 				DbFile dbdel = Database.getCatalog().getDatabaseFile(pid.getTableId());
 				dbdel.writePage(beforeImg);
 				Database.getBufferPool().discardPage(pid);
+				Database.getLogFile().logCLR(tid, beforeImg);
 				break;
 			case LogType.ABORT_RECORD:
+				throw new IOException("Transaction already aborted!");
 			case LogType.CLR_RECORD:
-			case LogType.CHECKPOINT_RECORD:
+				break;
 			default:
 				throw new RuntimeException("Unexpected type!  Type = " + type);    
 			}
