@@ -202,6 +202,7 @@ public class BufferPool {
 			throws IOException {
 		if(commit)
 		{
+			transCompleteLogUpdate(tid);
 			flushPages(tid); //flush all pages marked dirty by this transaction
 		}
 		else
@@ -209,6 +210,28 @@ public class BufferPool {
 			undo(tid); //discard all pages marked dirty by this transaction
 		}
 		releaseLocks(tid);
+	}
+
+	public void transCompleteLogUpdate(TransactionId tid) throws IOException
+	{
+		Iterator<PageId> iter = (idtopage.keySet()).iterator();
+		while(iter.hasNext())
+		{
+			PageId key = iter.next();
+			if (!idtopage.containsKey(key))
+			{
+				throw new IOException("Page not in buffer!");
+			}
+			Page flpage = idtopage.get(key);
+			if (flpage == null)
+			{
+				throw new IOException("Page is null!"); 
+			}
+			// use current page contents as the before-image
+			// for the next transaction that modifies this page.
+			flpage.setBeforeImage();	
+
+		}
 	}
 
 	private void releaseLocks(TransactionId tid)
@@ -379,8 +402,16 @@ public class BufferPool {
 			{
 				throw new IOException("Page is null!"); 
 			}
-			if(flpage.isDirty() != null)
+			TransactionId dirtier;
+			dirtier = flpage.isDirty();
+			if(dirtier != null)
 			{
+				// append an update record to the log, with 
+				// a before-image and after-image.
+
+				Database.getLogFile().logWrite(dirtier, flpage.getBeforeImage(), flpage);
+				Database.getLogFile().force();
+
 				dbdel.writePage(flpage);
 				flpage.markDirty(false, null);
 			}
@@ -462,6 +493,9 @@ public class BufferPool {
 	{
 		HashMap<PageId, LockRequest> tableEntries;
 		HashMap<TransactionId, LockNode> tidLocks;
+		
+		private static final int MAXWAIT = 100;
+		private static final int WAITINCREMENT = 10;
 
 		public LockTable()
 		{
@@ -471,7 +505,7 @@ public class BufferPool {
 
 		public void acquireLock(TransactionId tid, PageId pid, Permissions perm) throws TransactionAbortedException
 		{
-			System.out.println(tid + " wants " + perm + " lock on " + pid);
+			//System.out.println(tid + " wants " + perm + " lock on " + pid);
 			boolean waiting = true;
 			//does this transaction already hold the lock?
 			if(holdsLock(tid, pid))
@@ -490,7 +524,7 @@ public class BufferPool {
 				createWaitingLockNode(tid, pid);
 			}
 			int secondsWaited = 0;
-			int deadLock = 10;
+			int deadLock = MAXWAIT;
 
 			//need to add to end of the heldlocks table
 			//if read only then we need to make sure that every request before this one
@@ -511,17 +545,17 @@ public class BufferPool {
 						throw new TransactionAbortedException();
 					}
 					try {
-						System.out.println(tid + " Sleeping");
-						Thread.sleep(1);
-						secondsWaited += 1;
+						//System.out.println(tid + " Sleeping");
+						Thread.sleep(WAITINCREMENT);
+						secondsWaited += WAITINCREMENT;
 					} catch (InterruptedException ignored) { }
 				}
 			}
 
-			System.out.println(tid + " Acquired " + perm + " Lock on " + pid);
+			//System.out.println(tid + " Acquired " + perm + " Lock on " + pid);
 		}
 
-		private boolean handleLockUpgrade(TransactionId tid, PageId pid, Permissions perm)
+		private synchronized boolean handleLockUpgrade(TransactionId tid, PageId pid, Permissions perm)
 		{
 			if(perm.equals(Permissions.READ_ONLY)) //no need to upgrade when requesting read only lock
 			{
@@ -529,57 +563,63 @@ public class BufferPool {
 			}
 			else //read/write requested so we might need to upgrade
 			{
-				synchronized(lockTable)
+				LockRequest req = lockTable.tableEntries.get(pid);
+				//if this transaction has the first lock, then it is possible to 
+				//upgrade now
+				if(req.getTransactionId().equals(tid))
 				{
-					LockRequest req = lockTable.tableEntries.get(pid);
-					//if this transaction has the first lock, then it is possible to 
-					//upgrade now
-					if(req.getTransactionId().equals(tid))
+					if(req.shared())  //currently have read only lock, want read/write so need to upgrade
 					{
-						if(req.shared())  //currently have read only lock, want read/write so need to upgrade
+						if(req.next() == null || !req.next().granted()) //can grant if nothing after or no others granted
 						{
-							if(req.next() == null || !req.next().granted()) //can grant if nothing after or no others granted
-							{
-								req.setShared(perm);
-								return false;
-							}
-						}
-						else //already have read/write lock so we are done
-						{
+							req.setShared(perm);
 							return false;
 						}
 					}
-					while(req.next() != null && req.next().granted() != false) //find spot before requests without lock
+					else //already have read/write lock so we are done
 					{
-						req = req.next();
+						return false;
 					}
-					LockRequest newreq = new LockRequest(tid, false, perm);
-					newreq.setNext(req.next());
-					req.setNext(newreq);
-					return true;
 				}
+				while(req.next() != null && req.next().granted() != false) //find spot before requests without lock
+				{
+					req = req.next();
+				}
+				LockRequest newreq = new LockRequest(tid, false, perm);
+				newreq.setNext(req.next());
+				req.setNext(newreq);
+				return true;
 			}
 		}
 
-		private boolean createLockRequest(TransactionId tid, PageId pid, Permissions perm)
+		private synchronized boolean createLockRequest(TransactionId tid, PageId pid, Permissions perm)
 		{
-			synchronized (lockTable) {
-				//check if no locks are currently held on page
-				if(!lockTable.tableEntries.containsKey(pid)) //no locks on page, we can immediately grant it
+			//check if no locks are currently held on page
+			if(!lockTable.tableEntries.containsKey(pid)) //no locks on page, we can immediately grant it
+			{
+				lockTable.tableEntries.put(pid, new LockRequest(tid, true, perm));
+				createLockNode(tid, pid);
+				return false;
+			}
+			//locks are held on the page
+			else
+			{
+				boolean allgranted = true;
+				boolean noexclusive = true;
+				LockRequest lr = lockTable.tableEntries.get(pid);
+				//the basic idea here is that if all of the locks held on the
+				//page so far have been granted and are read only (shared),
+				//then we can assign a read lock right away
+				if(!lr.shared())
 				{
-					lockTable.tableEntries.put(pid, new LockRequest(tid, true, perm));
-					createLockNode(tid, pid);
-					return false;
+					noexclusive = false;
 				}
-				//locks are held on the page
-				else
+				if(!lr.granted())
 				{
-					boolean allgranted = true;
-					boolean noexclusive = true;
-					LockRequest lr = lockTable.tableEntries.get(pid);
-					//the basic idea here is that if all of the locks held on the
-					//page so far have been granted and are read only (shared),
-					//then we can assign a read lock right away
+					allgranted = false;
+				}
+				while(lr.next() != null)
+				{
 					if(!lr.shared())
 					{
 						noexclusive = false;
@@ -588,122 +628,102 @@ public class BufferPool {
 					{
 						allgranted = false;
 					}
-					while(lr.next() != null)
-					{
-						if(!lr.shared())
-						{
-							noexclusive = false;
-						}
-						if(!lr.granted())
-						{
-							allgranted = false;
-						}
-						lr = lr.next();
-					}
-					lr.setNext(new LockRequest(tid, false, perm)); //set not granted by default
-					//if asking for a read only lock, all have been granted, and all are read only
-					//then we can assign the lock
-					if (allgranted && noexclusive && perm.equals(Permissions.READ_ONLY))
-					{
-						lr.next().setGranted(true);
-						createLockNode(tid, pid);
-						return false;
-					}	
-					return true;
+					lr = lr.next();
 				}
+				lr.setNext(new LockRequest(tid, false, perm)); //set not granted by default
+				//if asking for a read only lock, all have been granted, and all are read only
+				//then we can assign the lock
+				if (allgranted && noexclusive && perm.equals(Permissions.READ_ONLY))
+				{
+					lr.next().setGranted(true);
+					createLockNode(tid, pid);
+					return false;
+				}	
+				return true;
 			}
 		}
 
 
 
-		private boolean checkRead(TransactionId tid, PageId pid)
+		private synchronized boolean checkRead(TransactionId tid, PageId pid)
 		{
 			boolean allgranted = true;
 			boolean noexclusive = true;
 			LockRequest req = lockTable.tableEntries.get(pid);
-			synchronized (lockTable) 
+			noexclusive = true;
+			allgranted = true;
+			while(noexclusive && !req.getTransactionId().equals(tid))
 			{
-				noexclusive = true;
-				allgranted = true;
-				while(noexclusive && !req.getTransactionId().equals(tid))
+				if(!req.granted())
 				{
-					if(!req.granted())
-					{
-						allgranted = false;
-					}
-					if(!req.shared())
-					{
-						noexclusive = false;
-					}
-					req = req.next();
+					allgranted = false;
 				}
-				if (allgranted && noexclusive) //if all previously granted and read only
+				if(!req.shared())
 				{
-					req.setGranted(true);
-					LockNode ln = lockTable.tidLocks.get(tid);
-					ln.finishWaiting(pid);
-					return false;
-				}				
-				return true;
+					noexclusive = false;
+				}
+				req = req.next();
 			}
-		}
-
-		private boolean checkReadWrite(TransactionId tid, PageId pid)
-		{
-			synchronized (lockTable) 
+			if (allgranted && noexclusive) //if all previously granted and read only
 			{
-				LockRequest req = lockTable.tableEntries.get(pid);
-				//if we have the lock then this is the read lock request and we need to check the next one
-				if(req.getTransactionId().equals(tid) && holdsLock(tid, pid))
-				{
-					req = req.next();
-				}
-				if(req.getTransactionId().equals(tid)) //are we the first request? (so that no others have lock) If not go to sleep
-				{
-					req.setGranted(true);
-					LockNode ln = lockTable.tidLocks.get(tid);
-					ln.finishWaiting(pid);
-					lockTable.tableEntries.put(pid, req);
-					return false;
-				}				
-				return true;
+				req.setGranted(true);
+				LockNode ln = lockTable.tidLocks.get(tid);
+				ln.finishWaiting(pid);
+				return false;
+			}				
+			return true;
+
+		}
+
+		private synchronized boolean checkReadWrite(TransactionId tid, PageId pid)
+		{
+			LockRequest req = lockTable.tableEntries.get(pid);
+			//if we have the lock then this is the read lock request and we need to check the next one
+			if(req.getTransactionId().equals(tid) && holdsLock(tid, pid))
+			{
+				req = req.next();
 			}
+			if(req.getTransactionId().equals(tid)) //are we the first request? (so that no others have lock) If not go to sleep
+			{
+				req.setGranted(true);
+				LockNode ln = lockTable.tidLocks.get(tid);
+				ln.finishWaiting(pid);
+				lockTable.tableEntries.put(pid, req);
+				return false;
+			}				
+			return true;
 		}
 
 
 
 
-		private void createLockNode(TransactionId tid, PageId pid)
+		private synchronized void createLockNode(TransactionId tid, PageId pid)
 		{
-			synchronized (lockTable) {
-				if(lockTable.tidLocks.containsKey(tid))
-				{
-					LockNode ln = lockTable.tidLocks.get(tid);
-					ln.acquireLock(pid);
-				}
-				else
-				{
-					LockNode ln = new LockNode();
-					ln.acquireLock(pid);
-					lockTable.tidLocks.put(tid, ln);
-				}	
+			if(lockTable.tidLocks.containsKey(tid))
+			{
+				LockNode ln = lockTable.tidLocks.get(tid);
+				ln.acquireLock(pid);
 			}
+			else
+			{
+				LockNode ln = new LockNode();
+				ln.acquireLock(pid);
+				lockTable.tidLocks.put(tid, ln);
+			}	
 		}
 
-		private void createWaitingLockNode(TransactionId tid, PageId pid)
+		private synchronized void createWaitingLockNode(TransactionId tid, PageId pid)
 		{
-			synchronized(lockTable){
-				if(lockTable.tidLocks.containsKey(tid))
-				{
-					LockNode ln = lockTable.tidLocks.get(tid);
-					ln.startWaiting(pid);
-				}
-				else
-				{
-					LockNode ln = new LockNode();
-					ln.startWaiting(pid);
-					lockTable.tidLocks.put(tid, ln);
-				}
+			if(lockTable.tidLocks.containsKey(tid))
+			{
+				LockNode ln = lockTable.tidLocks.get(tid);
+				ln.startWaiting(pid);
+			}
+			else
+			{
+				LockNode ln = new LockNode();
+				ln.startWaiting(pid);
+				lockTable.tidLocks.put(tid, ln);
 			}
 		}
 

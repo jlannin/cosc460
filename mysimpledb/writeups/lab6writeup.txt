@@ -5,17 +5,69 @@ Exercise 1.
 
 1. Briefly explain how logging is done in SimpleDB by describing when log records are written to the log.  Use Eclipse search tools to find all uses of the LogFile methods in the SimpleDB source code.
 
-    <Replace this text with your answer>
+	First a new LogFile is created in the constructor of the database.
+
+    void preAppend() throws IOException 
+
+    private void checkActive(TransactionId tid, boolean shouldBeActive) throws IOException
+     
+    public synchronized void logXactionBegin(TransactionId tid)
+
+    public synchronized void logCommit(TransactionId tid) throws IOException {
+     
+    public void logAbort(TransactionId tid) throws IOException {
+       
+    public synchronized void logAbort(Long tid) throws IOException
+     
+    public synchronized void logWrite(TransactionId tid, Page before,
+
+    public synchronized void logCLR(TransactionId tid, Page after)
+     
+    public synchronized void logCLR(Long tid, Page after)
+     
+    static void writePageData(RandomAccessFile raf, Page p) throws IOException {  
+
+    static Page readPageData(RandomAccessFile raf) throws IOException {
+
+    public void logCheckpoint() throws IOException
+
+    public synchronized void logTruncate() throws IOException
+
+    public synchronized void shutdown() 
+
+    public void recover() throws IOException 
+
+    public synchronized void force() throws IOException
+
 
 
 2. Where is LogFile.force called?  You should include usages inside other LogFile methods.  For each usage, why is it important that force is called?
 
-    <Replace this text with your answer>
+    LogFile.force is called in a number of places:
 
+	- In Bufferpool.flushPage
+
+		LogFile.force is necessary in flushPage to ensure that we maintain our policy of Write Ahead Logging.  Before we flush any pages out to disk we must
+		ensure that we have the corresponding log record also written out to disk to guarantee that we can recover and undo any changes that had been made to
+		the page.  Since our ultimate goal is to implement a No Force policy, we want to ensure that we can always recover any changes on disk since we may be
+		writing changes to disk made by a transaction that has not yet committed.
+
+	- In LogFile.logAbort and LogFile.Commit
+
+		In these two methods, before we can remove the transaction from the list of active transactions, we have to make sure that we have a record on the disk
+		of why the transaction is no longer active. This will again ensure that if the database crashes we will know what happened to these transactions and why
+		they are no longer active.  
+
+	- In LogFile.logCheckpoint
+
+		Forcing our log to disk when we add a new checkpoint ensures that our last checkpoint data is saved in case we crash when updating the new checkpoint.
+		This will always ensure that we can at least roll back to the previous checkpoint in the event that something went wrong during this update.
 
 3. Where is setBeforeImage image called?  
 
-    <Replace this text with your answer>
+    setBeforeImage is called in two places.  First, in the constructor of a HeapPage where it clones the data that was just put into the HeapPage to be the before image
+    and in TransactionComplete during a commit when it clones the current data of the page (which has been fully updated since the transaction is comitting) into the old
+    data. This is necessary to ensure that the new page data of a committed transaction becomes the before image of the next transaction to work with the page.
 
 
 Exercise 4.
@@ -43,7 +95,7 @@ After you complete the lab, please answer the following questions.
 
 8. What is your name?  If you work with a partner, be sure to write both of your names.
 
-    <Replace this text with your answer>
+    Justin Lannin
 
 9. What did you think of this assignment?
 

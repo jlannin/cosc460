@@ -178,7 +178,7 @@ public class HeapFile implements DbFile {
 			bos.flush();
 			bos.close();
 		}
-		Database.getBufferPool().getPage(tid, newid, Permissions.READ_WRITE); //put new page in buffer
+		newpage = (HeapPage) Database.getBufferPool().getPage(tid, newid, Permissions.READ_WRITE); //put new page in buffer
 		newpage.insertTuple(t);
 		pages.add(newpage);
 		return pages;
