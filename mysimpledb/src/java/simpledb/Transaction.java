@@ -56,7 +56,7 @@ public class Transaction {
                 Database.getLogFile().logAbort(tid); //does rollback too
             } else {
                 //write all the dirty pages for this transaction out
-                Database.getBufferPool().flushPages(tid);
+                Database.getBufferPool().flushPages(tid);  // force policy, drop this as challenge problem
                 Database.getLogFile().logCommit(tid);
             }
 
