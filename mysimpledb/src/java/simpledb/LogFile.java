@@ -407,9 +407,9 @@ public class LogFile {
 			}
 		}
 
-		logFileRecovery.print();
+		//logFileRecovery.print();
 		logTruncate();
-		logFileRecovery.print();
+		//logFileRecovery.print();
 	}
 
 	/**
