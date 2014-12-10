@@ -71,16 +71,17 @@ After you complete the lab, please answer the following questions.
 
 9. What did you think of this assignment?
 
-    <Replace this text with your answer>
+    I really enjoyed this assignment, I thought that it was fun to work with the logs and directly see how they can be used during recovery.
 
 10. What was the hardest part of this assignment?
 
-    <Replace this text with your answer>
+    I think that the most difficult part of this assignment was figuring out the structure of the log and how to navigate it, but the print function really
+    helped make that clear.
 
 11. Describe any missing or incomplete elements of your code.
 
-    <Replace this text with your answer>
+    I think that everything should be completed, as of this commit I have also implemented: log truncate in LogFile
 
 12. Roughly how long did you spend working on this lab?
 
-    <Replace this text with your answer>
+    I definitely spent a good amount of time working on this lab, but definitely less time than working on lab 5.

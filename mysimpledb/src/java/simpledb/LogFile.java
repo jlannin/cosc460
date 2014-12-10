@@ -563,10 +563,8 @@ public class LogFile {
 			raftmp.read(b);
 			raf.write(b);
 		}
-		if (tmp.delete()) {
-            System.out.println("Temp file is deleted");
-        } else {
-            System.out.println("Error occured! File: " + tmp.getName() + " is not deleted!");
+		if (!tmp.delete()) {
+            throw new IOException("Error occured! File: " + tmp.getName() + " is not deleted!");
         }
 		raf.seek(raf.length());
 

@@ -151,8 +151,126 @@ class LogFileRecovery {
 	 * the BufferPool are locked.
 	 */
 	public void recover() throws IOException {
+		//start at checkpoint, do redo stage, redoing everything, then do undo stage, undoing everything
+		readOnlyLog.seek(0);
+		HashSet<Long> undoTids = new HashSet<Long>();
+		long lastCheckpoint = readOnlyLog.readLong();
+		if(lastCheckpoint != -1)
+		{
+			readOnlyLog.seek(lastCheckpoint);
+			if(readOnlyLog.readInt() != LogType.CHECKPOINT_RECORD)
+			{
+				throw new IOException("Checkpoint is mislabeled!");
+			}
+			readOnlyLog.readLong(); //skip -1 Tid
+			//get active transactions from checkpoint
+			int count = readOnlyLog.readInt();
+			for (int i = 0; i < count; i++) {
+				long nextTid = readOnlyLog.readLong();
+				undoTids.add(nextTid);
+			}
+			readOnlyLog.readLong();
+		}
+		
+		//start the redo phase
+		redoPhase(undoTids);
+		undoPhase(undoTids);
+		
+	}
+	
+	
+	//readOnlyLog ready to redo
+	private void redoPhase(HashSet<Long> undoTids) throws IOException
+	{
+		while (readOnlyLog.getFilePointer() < readOnlyLog.length()) {
+			int type = readOnlyLog.readInt();
+			long tid = readOnlyLog.readLong();
+			switch (type) {
+			case LogType.BEGIN_RECORD:
+				if(undoTids.contains(tid))
+				{
+					throw new IOException("Mulitple \"begin records\" for the same transaction");
+				}
+				undoTids.add(tid);
+				break;
+			case LogType.COMMIT_RECORD:
+				if(!undoTids.contains(tid))
+				{
+					throw new IOException(tid + " already completed, cannot commit!");
+				}
+				undoTids.remove(tid);
+				break;
+			case LogType.ABORT_RECORD:
+				if(!undoTids.contains(tid))
+				{
+					throw new IOException(tid + " already completed, cannot abort!");
+				}
+				undoTids.remove(tid);
+				break;
+			case LogType.UPDATE_RECORD:
+				Page beforeImg = LogFile.readPageData(readOnlyLog);
+				Page afterImg = LogFile.readPageData(readOnlyLog);  // after image
+				PageId pid = beforeImg.getId();
+				DbFile dbdel = Database.getCatalog().getDatabaseFile(pid.getTableId());
+				dbdel.writePage(afterImg);
+				
+				break;
+			case LogType.CLR_RECORD:
+				afterImg = LogFile.readPageData(readOnlyLog);  // after image
+				pid = afterImg.getId();
+				dbdel = Database.getCatalog().getDatabaseFile(pid.getTableId());
+				dbdel.writePage(afterImg);
+				break;
+			default:
+				throw new RuntimeException("Unexpected type!  Type = " + type);
+			}
+			long startOfRecord = readOnlyLog.readLong();   // ignored, only useful when going backwards thru log
+		}
+	}
+	
+	private void undoPhase(HashSet<Long> undoTids) throws IOException
+	{
+		long currLoc = readOnlyLog.length();
+		long tid;
+		int type;
+		long startRecord;
+		while(!undoTids.isEmpty())
+		{
+			do
+			{
+				readOnlyLog.seek(currLoc-LogFile.LONG_SIZE);
+				startRecord = readOnlyLog.readLong();
+				currLoc = startRecord;
+				readOnlyLog.seek(startRecord);
+				type = readOnlyLog.readInt();
+				tid = readOnlyLog.readLong();
+			} while(!undoTids.contains(tid));
 
-		// some code goes here
+			//have a log record in the undo list
 
+			switch (type) {
+			case LogType.BEGIN_RECORD:
+				Database.getLogFile().logAbort(tid);
+				undoTids.remove(tid);
+				
+				break;
+			case LogType.COMMIT_RECORD:
+				throw new IOException("Transaction already comitted!");
+			case LogType.UPDATE_RECORD:
+				Page beforeImg = LogFile.readPageData(readOnlyLog);
+				PageId pid = beforeImg.getId();
+				DbFile dbdel = Database.getCatalog().getDatabaseFile(pid.getTableId());
+				dbdel.writePage(beforeImg);
+				Database.getBufferPool().discardPage(pid);
+				Database.getLogFile().logCLR(tid, beforeImg);
+				break;
+			case LogType.ABORT_RECORD:
+				throw new IOException("Transaction already aborted!");
+			case LogType.CLR_RECORD:
+				break;
+			default:
+				throw new RuntimeException("Unexpected type!  Type = " + type);    
+			}
+		}
 	}
 }
