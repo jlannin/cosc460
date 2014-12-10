@@ -80,7 +80,7 @@ After you complete the lab, please answer the following questions.
 
 11. Describe any missing or incomplete elements of your code.
 
-    All tests are passing as of this commit: 12/9/14
+    All tests are passing as of this commit: 12/10/14
 
     Bonuses attempted after that.
 
@@ -90,5 +90,11 @@ After you complete the lab, please answer the following questions.
 
 Bonuses!
 
-I have also implemented: log truncate in LogFile
+I have also implemented:
+
+log truncate in LogFile
+
+Waits-for graph based deadlock detection
+In my Lock table, I have a final boolean called "GRAPH" which if set to true will perform the graph based deadlock detection and if set to false will run the regular
+timeout based deadlock detection.
 

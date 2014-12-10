@@ -240,10 +240,10 @@ public class BufferPool {
 		if(node != null)
 		{
 			//release waiting
-			Iterator<PageId> iter = node.waitingIter();
-			releaseHelp(iter, tid);
+			PageId waitingPid = node.getWaiting();
+			releasePage(tid, waitingPid);
 			//release held
-			iter = node.heldIter();
+			Iterator<PageId> iter = node.heldIter();
 			releaseHelp(iter, tid);
 		}
 	}
@@ -493,9 +493,10 @@ public class BufferPool {
 	{
 		HashMap<PageId, LockRequest> tableEntries;
 		HashMap<TransactionId, LockNode> tidLocks;
-		
+
 		private static final int MAXWAIT = 100;
 		private static final int WAITINCREMENT = 10;
+		private static final boolean GRAPH = true;
 
 		public LockTable()
 		{
@@ -521,7 +522,7 @@ public class BufferPool {
 
 			if(waiting) //first we should add a waiting request to tidLocks
 			{
-				createWaitingLockNode(tid, pid);
+				createWaitingLockNode(tid, pid, perm);
 			}
 			int secondsWaited = 0;
 			int deadLock = MAXWAIT;
@@ -540,7 +541,7 @@ public class BufferPool {
 					waiting = checkReadWrite(tid, pid);
 				}
 				if (waiting) {
-					if(secondsWaited == deadLock)
+					if(!GRAPH && secondsWaited == deadLock)
 					{
 						throw new TransactionAbortedException();
 					}
@@ -551,8 +552,10 @@ public class BufferPool {
 					} catch (InterruptedException ignored) { }
 				}
 			}
-
 			//System.out.println(tid + " Acquired " + perm + " Lock on " + pid);
+			//System.out.print(tid + " Lock Table: ");
+			//lockTable.printLockRequests(pid);
+			//System.out.println();
 		}
 
 		private synchronized boolean handleLockUpgrade(TransactionId tid, PageId pid, Permissions perm)
@@ -607,18 +610,11 @@ public class BufferPool {
 				boolean allgranted = true;
 				boolean noexclusive = true;
 				LockRequest lr = lockTable.tableEntries.get(pid);
+				LockRequest prev = lr;
 				//the basic idea here is that if all of the locks held on the
 				//page so far have been granted and are read only (shared),
 				//then we can assign a read lock right away
-				if(!lr.shared())
-				{
-					noexclusive = false;
-				}
-				if(!lr.granted())
-				{
-					allgranted = false;
-				}
-				while(lr.next() != null)
+				while(lr != null)
 				{
 					if(!lr.shared())
 					{
@@ -628,14 +624,18 @@ public class BufferPool {
 					{
 						allgranted = false;
 					}
+					prev = lr;
 					lr = lr.next();
 				}
-				lr.setNext(new LockRequest(tid, false, perm)); //set not granted by default
+				prev.setNext(new LockRequest(tid, false, perm)); //set not granted by default
 				//if asking for a read only lock, all have been granted, and all are read only
 				//then we can assign the lock
+				//System.out.println(tid + " " + allgranted + "  " + noexclusive + " " + perm.equals(Permissions.READ_ONLY));
+				//System.out.print(tid + " Lock Table1: ");
+				//lockTable.printLockRequests(pid);
 				if (allgranted && noexclusive && perm.equals(Permissions.READ_ONLY))
 				{
-					lr.next().setGranted(true);
+					prev.next().setGranted(true);
 					createLockNode(tid, pid);
 					return false;
 				}	
@@ -695,8 +695,6 @@ public class BufferPool {
 		}
 
 
-
-
 		private synchronized void createLockNode(TransactionId tid, PageId pid)
 		{
 			if(lockTable.tidLocks.containsKey(tid))
@@ -712,8 +710,15 @@ public class BufferPool {
 			}	
 		}
 
-		private synchronized void createWaitingLockNode(TransactionId tid, PageId pid)
+		private synchronized void createWaitingLockNode(TransactionId tid, PageId pid, Permissions perm) throws TransactionAbortedException
 		{
+			
+			if(GRAPH)
+			{
+				HashSet<TransactionId> visited = waitingFor(tid, perm, pid);
+				HashSet<TransactionId> waiting = new HashSet<TransactionId>();
+				detectCycle(tid, visited, waiting, perm);
+			}
 			if(lockTable.tidLocks.containsKey(tid))
 			{
 				LockNode ln = lockTable.tidLocks.get(tid);
@@ -727,6 +732,60 @@ public class BufferPool {
 			}
 		}
 
+		private synchronized void detectCycle(TransactionId tid, HashSet<TransactionId> waitingFor, HashSet<TransactionId> visited, Permissions perm) throws TransactionAbortedException
+		{
+			//first determine which Transactions this one is waiting for
+			//I think that here we should the lockRequest already inserted so we can get all Tids before us
+			//HashMap
+
+			Iterator<TransactionId> iter = waitingFor.iterator();
+			HashSet<TransactionId> waitingFor1 = new HashSet<TransactionId>();
+			while(iter.hasNext())
+			{
+				TransactionId tid1 = iter.next();
+				if(!visited.contains(tid1)) //only need to look at further if we have not already visited
+				{
+					waitingFor1 = waitingFor(tid1, perm, null);
+					if(waitingFor1.contains(tid))
+					{
+						throw new TransactionAbortedException();
+					}
+					visited.add(tid1);
+					detectCycle(tid, waitingFor1, visited, perm);
+				}
+			}
+
+		}
+
+		private synchronized HashSet<TransactionId> waitingFor(TransactionId tid, Permissions perm, PageId pid)
+		{
+			HashSet<TransactionId> waitingFor = new HashSet<TransactionId>();
+			//find pid that tid is waiting for
+			PageId wait;
+			if(pid == null)
+			{
+				LockNode node = lockTable.tidLocks.get(tid);
+				wait = node.getWaiting();
+			}
+			else
+			{
+				wait = pid;
+			}
+			LockRequest req = lockTable.tableEntries.get(wait);
+			while(req != null && (!req.getTransactionId().equals(tid) || req.granted()))
+			{
+				//can never be waiting for granted read locks
+				if(perm.equals(Permissions.READ_WRITE) || !req.granted() || !req.shared())
+				{
+					waitingFor.add(req.getTransactionId());
+				}
+				req = req.next();
+			}
+			waitingFor.remove(tid);
+			return waitingFor;
+
+		}
+
 		public synchronized boolean holdsLock(TransactionId tid, PageId p) {
 			if(lockTable.tidLocks.containsKey(tid)) 
 			{
@@ -736,6 +795,16 @@ public class BufferPool {
 			return false;
 		}
 
+		public synchronized void printLockRequests(PageId pid)
+		{
+			LockRequest req = lockTable.tableEntries.get(pid);
+			while(req != null)
+			{
+				req.print();
+				req = req.next();
+			}
+		}
+		
 	}
 	class LockRequest
 	{
@@ -786,17 +855,22 @@ public class BufferPool {
 		{
 			this.next = next;
 		}
+		
+		public void print()
+		{
+			System.out.print("   " + tid + " " + perm + " " + granted);
+		}
 	}
 
 	class LockNode
 	{
 		private HashSet<PageId> holding;
-		private HashSet<PageId> waiting;
+		private PageId waiting;
 
 		public LockNode()
 		{
 			holding = new HashSet<PageId>();
-			waiting = new HashSet<PageId>();
+			waiting = null;
 		}
 
 		public boolean holdsLock(PageId pid)
@@ -807,25 +881,25 @@ public class BufferPool {
 		public void acquireLock(PageId pid)
 		{
 			holding.add(pid);
-			waiting.remove(pid);
+			waiting = null;
 		}
 
 		public void releaseLocks(PageId pid)
 		{
-			waiting.remove(pid);
+			waiting = null;
 			holding.remove(pid);
 		}
 
 		public void startWaiting(PageId pid)
 		{
-			waiting.add(pid);
+			waiting = pid;
 		}
 
 		public void finishWaiting(PageId pid)
 		{
-			if(waiting.contains(pid))
+			if(waiting.equals(pid))
 			{
-				waiting.remove(pid);
+				waiting = null;
 				holding.add(pid);
 			}
 			else
@@ -834,9 +908,9 @@ public class BufferPool {
 			}
 		}
 
-		public Iterator<PageId> waitingIter()
+		public PageId getWaiting()
 		{
-			return waiting.iterator();
+			return waiting;
 		}
 
 		public Iterator<PageId> heldIter()

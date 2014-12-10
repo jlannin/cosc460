@@ -130,14 +130,16 @@ public class TransactionTest extends SimpleDbTestBase {
 
                         // insert this new tuple into the table
                         Insert insOp = new Insert(tr.getId(), ti, tableId);
+                        //System.out.println(tr + " added " + t.getField(0));
                         Query q3 = new Query(insOp, tr.getId());
                         q3.start();
                         q3.next();
                         q3.close();
-                        //System.out.println(tr + "third checkpoint");
+                        //System.out.println(tr + "comitting");
 
                         tr.commit();
                         Database.getBufferPool().flushAllPages();
+                        //System.out.println(tr + " completed");
                         break;
                     } catch (TransactionAbortedException te) {
                         //System.out.println("thread " + tr.getId() + " killed");
@@ -163,7 +165,7 @@ public class TransactionTest extends SimpleDbTestBase {
             completed = true;
         }
     }
-
+    
     private static class ModifiableCyclicBarrier {
         private CountDownLatch awaitLatch;
         private CyclicBarrier participationLatch;

@@ -85,7 +85,7 @@ public class IntegerAggregator implements Aggregator {
 	{
 		c.increaseCount();
 		int value = ((IntField) newtup.getField(aggfield)).getValue();
-		System.out.println(value);
+		//System.out.println(value);
 		c.sum(value);
 		if (operator == Aggregator.Op.COUNT)
 		{
