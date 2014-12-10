@@ -473,7 +473,8 @@ public class LogFile {
 			
 			boolean pastCheckpoint = false;
 
-			//start copying over
+			//start copying the log over
+			
 			raftmp.writeLong(lastCheckpoint); // place holder for eventual checkpoint
 			Long recordStart;
 
@@ -482,7 +483,7 @@ public class LogFile {
 				tid = raf.readLong();
 				switch (type) {
 				case LogType.BEGIN_RECORD:
-					if(pastCheckpoint || checkpointTids.contains(tid)) // don't need transactions that finished before checkpoint
+					if(pastCheckpoint || checkpointTids.contains(tid)) // don't need transactions that finished (weren't active) before checkpoint
 					{
 						recordStart = raftmp.getFilePointer();
 						raftmp.writeInt(LogType.BEGIN_RECORD);
@@ -557,6 +558,7 @@ public class LogFile {
 			}
 
 			//now we have to copy raftmp into raf
+			
 			byte[] b = new byte[(int) raftmp.length()];
 			raftmp.seek(0);
 			raf.setLength(0);

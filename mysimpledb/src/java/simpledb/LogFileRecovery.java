@@ -179,7 +179,13 @@ class LogFileRecovery {
 	}
 	
 	
-	//readOnlyLog ready to redo
+	/**
+	 * This does the redo phase of recovery with
+	 * undoTids being updated to contain the list of transactions that
+	 * do not commit or abort and so will have to be undone.
+	 * @param undoTids
+	 * @throws IOException
+	 */
 	private void redoPhase(HashSet<Long> undoTids) throws IOException
 	{
 		while (readOnlyLog.getFilePointer() < readOnlyLog.length()) {
@@ -228,6 +234,11 @@ class LogFileRecovery {
 		}
 	}
 	
+	/**
+	 * This function undoes all of the transactions in undoTids.
+	 * @param undoTids
+	 * @throws IOException
+	 */
 	private void undoPhase(HashSet<Long> undoTids) throws IOException
 	{
 		long currLoc = readOnlyLog.length();

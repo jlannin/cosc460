@@ -202,16 +202,22 @@ public class BufferPool {
 			throws IOException {
 		if(commit)
 		{
-			transCompleteLogUpdate(tid);
+			transCompleteLogUpdate(tid); //handle log before image updating
 			flushPages(tid); //flush all pages marked dirty by this transaction
 		}
 		else
 		{
 			undo(tid); //discard all pages marked dirty by this transaction
 		}
-		releaseLocks(tid);
+		releaseLocks(tid); //release all locks that the tid has and is waiting for
 	}
-
+	
+	/**
+	 * Set before image to be current afterimage of all pages that tid
+	 * held a lock on.
+	 * @param tid
+	 * @throws IOException
+	 */
 	public void transCompleteLogUpdate(TransactionId tid) throws IOException
 	{
 		Iterator<PageId> iter = (idtopage.keySet()).iterator();
@@ -482,11 +488,6 @@ public class BufferPool {
 				}
 			}
 		}
-		//find least recently used disk
-		//flush page to disk
-		//remove from thing
-		//decresae pagecount
-		// not necessary for lab1
 	}
 
 	class LockTable
@@ -494,9 +495,9 @@ public class BufferPool {
 		HashMap<PageId, LockRequest> tableEntries;
 		HashMap<TransactionId, LockNode> tidLocks;
 
-		private static final int MAXWAIT = 100;
-		private static final int WAITINCREMENT = 10;
-		private static final boolean GRAPH = true;
+		private static final int MAXWAIT = 100; //max amount waiting time if doing timeout based deadlock detection
+		private static final int WAITINCREMENT = 10; //how long should each transaction wait before checking again?
+		private static final boolean GRAPH = true; //True = do graph based deadlock detection, False = timeout based deadlock detection
 
 		public LockTable()
 		{
@@ -504,6 +505,17 @@ public class BufferPool {
 			tidLocks = new HashMap<TransactionId, LockNode>();
 		}
 
+		/**
+		 * The acquireLock method first handles whether we are upgrading
+		 * or acquiring a new lock, adding a new LockRequest to lockTable.tableEntries,
+		 * and assigns the lock right away if we can.  It then adds a new LockNode to 
+		 * lockTable.tidLocks (after possibly checking for deadlock with a waits for graph). 
+		 * Finally, it waits (if still necessary) and checks to see if we can acquire lock.
+		 * @param tid
+		 * @param pid
+		 * @param perm
+		 * @throws TransactionAbortedException
+		 */
 		public void acquireLock(TransactionId tid, PageId pid, Permissions perm) throws TransactionAbortedException
 		{
 			//System.out.println(tid + " wants " + perm + " lock on " + pid);
@@ -558,6 +570,14 @@ public class BufferPool {
 			//System.out.println();
 		}
 
+		/**
+		 * This method handles all lock upgrades when tid already
+		 * has a read lock on pid.
+		 * @param tid
+		 * @param pid
+		 * @param perm
+		 * @return
+		 */
 		private synchronized boolean handleLockUpgrade(TransactionId tid, PageId pid, Permissions perm)
 		{
 			if(perm.equals(Permissions.READ_ONLY)) //no need to upgrade when requesting read only lock
@@ -595,6 +615,20 @@ public class BufferPool {
 			}
 		}
 
+		/**
+		 * Creates a new lockRequest in lockTable.tableEntries.
+		 * 
+		 * If we can assign the lock right away (no locks held on pid)
+		 * or we discover that we can acquire lock when we are looking through
+		 * to determine where to add our new request, we acquire lock here.
+		 * 
+		 * return True = still waiting (did not acquire lock)
+		 * return False = not waiting (acquired lock)
+		 * @param tid
+		 * @param pid
+		 * @param perm
+		 * @return
+		 */
 		private synchronized boolean createLockRequest(TransactionId tid, PageId pid, Permissions perm)
 		{
 			//check if no locks are currently held on page
@@ -644,7 +678,14 @@ public class BufferPool {
 		}
 
 
-
+		/**
+		 * Check to see if tid can acquire the read lock.
+		 * return True if cannot and are still waiting
+		 * return False if we acquired the lock and have finished waiting
+		 * @param tid
+		 * @param pid
+		 * @return
+		 */
 		private synchronized boolean checkRead(TransactionId tid, PageId pid)
 		{
 			boolean allgranted = true;
@@ -675,6 +716,15 @@ public class BufferPool {
 
 		}
 
+		/**
+		 * A waiting transaction checks to see if it can acquire the read/write
+		 * lock and returns true/false if we are still waiting or not.
+		 * True = we are still waiting and did not acquire lock
+		 * False = we acquired lock and are not still waiting
+		 * @param tid
+		 * @param pid
+		 * @return
+		 */
 		private synchronized boolean checkReadWrite(TransactionId tid, PageId pid)
 		{
 			LockRequest req = lockTable.tableEntries.get(pid);
@@ -695,6 +745,13 @@ public class BufferPool {
 		}
 
 
+		/**
+		 * This method is only called when we are assigning the lock on pid
+		 * to the transaction tid.  It updates lockTable.tidLocks to reflect the
+		 * fact that tid has acquired the lock on pid.
+		 * @param tid
+		 * @param pid
+		 */
 		private synchronized void createLockNode(TransactionId tid, PageId pid)
 		{
 			if(lockTable.tidLocks.containsKey(tid))
@@ -710,6 +767,16 @@ public class BufferPool {
 			}	
 		}
 
+		/**
+		 * This method first checks if we are doing a graph based deadlock
+		 * check and if we are, tries to detect the cycle before proceeding.
+		 * It then updates lockTable.tidLocks so that the entry corresponding
+		 * to tid contains our waiting request for pid with perm.
+		 * @param tid
+		 * @param pid
+		 * @param perm
+		 * @throws TransactionAbortedException
+		 */
 		private synchronized void createWaitingLockNode(TransactionId tid, PageId pid, Permissions perm) throws TransactionAbortedException
 		{
 			
@@ -719,7 +786,7 @@ public class BufferPool {
 				HashSet<TransactionId> waiting = new HashSet<TransactionId>();
 				detectCycle(tid, visited, waiting, perm);
 			}
-			if(lockTable.tidLocks.containsKey(tid))
+			if(lockTable.tidLocks.containsKey(tid)) //this tid already has some locks
 			{
 				LockNode ln = lockTable.tidLocks.get(tid);
 				ln.startWaiting(pid);
@@ -732,6 +799,21 @@ public class BufferPool {
 			}
 		}
 
+		/**
+		 * This method handles all of the deadlock graph based
+		 * detection.  Using the waitingFor method, we determine
+		 * all of the transactions that our original transactionId tid
+		 * is waiting for and follow the path of dependencies until we
+		 * either visit all of the Tids (we are done) or find our way
+		 * back to our original transactionId where we throw the exception.
+		 * @param tid  -- Our original transactionId
+		 * @param waitingFor -- Tids that we are waiting for at our node in the graph
+		 * 						Originally, this is the set of Transactions that our original
+		 * 						transaction is waiting for.
+		 * @param visited --Set of all Tids already visited
+		 * @param perm -- Used in the waitingFor method
+		 * @throws TransactionAbortedException
+		 */
 		private synchronized void detectCycle(TransactionId tid, HashSet<TransactionId> waitingFor, HashSet<TransactionId> visited, Permissions perm) throws TransactionAbortedException
 		{
 			//first determine which Transactions this one is waiting for
@@ -757,6 +839,17 @@ public class BufferPool {
 
 		}
 
+		/**
+		 * This method returns a HashSet of all of the transactionIds that
+		 * tid is waiting for. When we call this about/from the running transaction that is
+		 * trying to request a new lock, we have to pass along a pageId as
+		 * well because we have not updated lockTable.tidLocks to contain the
+		 * new transaction (it is only updated if no deadlock has been detected).
+		 * @param tid
+		 * @param perm
+		 * @param pid
+		 * @return
+		 */
 		private synchronized HashSet<TransactionId> waitingFor(TransactionId tid, Permissions perm, PageId pid)
 		{
 			HashSet<TransactionId> waitingFor = new HashSet<TransactionId>();
@@ -786,6 +879,12 @@ public class BufferPool {
 
 		}
 
+		/**
+		 * Tests if tid already holds the lock on p
+		 * @param tid
+		 * @param p
+		 * @return
+		 */
 		public synchronized boolean holdsLock(TransactionId tid, PageId p) {
 			if(lockTable.tidLocks.containsKey(tid)) 
 			{
@@ -795,6 +894,10 @@ public class BufferPool {
 			return false;
 		}
 
+		/**
+		 * Prints the list of LockRequests for pid
+		 * @param pid
+		 */
 		public synchronized void printLockRequests(PageId pid)
 		{
 			LockRequest req = lockTable.tableEntries.get(pid);
