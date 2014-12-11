@@ -80,8 +80,8 @@ public class LogRollbackTest extends LogTestBase {
 
         Transaction t3 = new Transaction();
         t3.start();
-        look(hf1, t2, 1, true);                  // should still be there
-        look(hf1, t2, 2, true);
+        look(hf1, t3, 1, true);                  // should still be there
+        look(hf1, t3, 2, true);
         t3.commit();
     }
 

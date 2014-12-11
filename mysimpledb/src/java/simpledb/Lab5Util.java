@@ -35,22 +35,22 @@ public class Lab5Util {
  * behavior.
  */
 abstract class SimpleDBTransactionThread extends Thread {
-    protected final TransactionId tid = new TransactionId();
+    protected final Transaction t = new Transaction();
 
     @Override
     public void run() {
         try {
-            System.out.println("SimpleDBTransactionThread: starting transaction " + tid);
+            System.out.println("SimpleDBTransactionThread: starting transaction " + t);
             execute();
-            System.out.println("SimpleDBTransactionThread: committing transaction " + tid);
-            Database.getBufferPool().transactionComplete(tid, true);
+            System.out.println("SimpleDBTransactionThread: committing transaction " + t);
+            //Database.getBufferPool().transactionComplete(t.getId(), true);
         } catch (TransactionAbortedException e) {
-            System.out.println("SimpleDBTransactionThread: aborting transaction " + tid);
-            try {
-                Database.getBufferPool().transactionComplete(tid, false);
-            } catch (IOException e2) {
-                e2.printStackTrace();
-            }
+            System.out.println("SimpleDBTransactionThread: aborting transaction " + t);
+            //try {
+               // Database.getBufferPool().transactionComplete(t.getId(), false);
+          //  } catch (IOException e2) {
+         //       e2.printStackTrace();
+            //}
         } catch (Exception e) {
             e.printStackTrace();
         }

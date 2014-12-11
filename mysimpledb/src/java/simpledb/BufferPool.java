@@ -27,6 +27,9 @@ public class BufferPool {
 
 	private static int pageSize = PAGE_SIZE;
 
+	private final boolean FORCE = false;
+	private final boolean NOSTEAL = false;
+
 	/**
 	 * Default number of pages passed to the constructor. This is used by
 	 * other classes. BufferPool should use the numPages argument to the
@@ -132,6 +135,7 @@ public class BufferPool {
 			{
 				ln.releaseLocks(pid);
 			}
+
 			// update lockEntries
 			LockRequest lr = lockTable.tableEntries.get(pid);
 			boolean onFirst = true;
@@ -202,8 +206,11 @@ public class BufferPool {
 			throws IOException {
 		if(commit)
 		{
-			transCompleteLogUpdate(tid); //handle log before image updating
-			flushPages(tid); //flush all pages marked dirty by this transaction
+			if(FORCE)
+			{
+				flushPages(tid); //flush all pages marked dirty by this transaction
+			}
+			transCompleteUpdateBeforeImg(tid); //handle log before image updating
 		}
 		else
 		{
@@ -211,36 +218,40 @@ public class BufferPool {
 		}
 		releaseLocks(tid); //release all locks that the tid has and is waiting for
 	}
-	
+
 	/**
-	 * Set before image to be current afterimage of all pages that tid
+	 * Set before image to be current after image of all pages that tid
 	 * held a lock on.
 	 * @param tid
 	 * @throws IOException
 	 */
-	public void transCompleteLogUpdate(TransactionId tid) throws IOException
+	public synchronized void transCompleteUpdateBeforeImg(TransactionId tid) throws IOException
 	{
-		Iterator<PageId> iter = (idtopage.keySet()).iterator();
-		while(iter.hasNext())
+		LockNode node = lockTable.tidLocks.get(tid);
+		if(node != null)
 		{
-			PageId key = iter.next();
-			if (!idtopage.containsKey(key))
+			Iterator<PageId> iter = node.heldIter();
+			while(iter.hasNext())
 			{
-				throw new IOException("Page not in buffer!");
-			}
-			Page flpage = idtopage.get(key);
-			if (flpage == null)
-			{
-				throw new IOException("Page is null!"); 
+				PageId key = iter.next();
+				if (idtopage.containsKey(key))
+				{
+					Page flpage = idtopage.get(key);
+					if (flpage == null)
+					{
+						throw new IOException("Page is null!"); 
+					}
+
+					flpage.setBeforeImage();
+				}
 			}
 			// use current page contents as the before-image
 			// for the next transaction that modifies this page.
-			flpage.setBeforeImage();	
-
 		}
+
 	}
 
-	private void releaseLocks(TransactionId tid)
+	private synchronized void releaseLocks(TransactionId tid)
 	{
 		LockNode node = lockTable.tidLocks.get(tid);
 		if(node != null)
@@ -251,10 +262,11 @@ public class BufferPool {
 			//release held
 			Iterator<PageId> iter = node.heldIter();
 			releaseHelp(iter, tid);
+			lockTable.tidLocks.remove(tid);
 		}
 	}
 
-	private void releaseHelp(Iterator<PageId> iter, TransactionId tid)
+	private synchronized void releaseHelp(Iterator<PageId> iter, TransactionId tid)
 	{
 		HashSet<PageId> pidsToRemove = new HashSet<PageId>();
 		while(iter.hasNext())
@@ -269,7 +281,7 @@ public class BufferPool {
 		}
 	}
 
-	private void undo(TransactionId tid)
+	private synchronized void undo(TransactionId tid)
 	{
 		Iterator<PageId> iter = (idtopage.keySet()).iterator();
 		while(iter.hasNext())
@@ -279,6 +291,38 @@ public class BufferPool {
 			{
 				discardPage(key);
 			}
+		}
+	}
+
+	/**
+	 * We have the lock on BP and on the LogFile when we enter this
+	 * method.  Writes all changes to the log before we add a commit and
+	 * if using force then flush pages to disk.
+	 * 
+	 * @param tid
+	 * @throws IOException
+	 */
+	public void updateLogBeforeCommit(TransactionId tid) throws IOException
+	{
+		//any pages not in BP at this point have already been added to log
+
+		LockNode node = lockTable.tidLocks.get(tid);
+		Iterator<PageId> iter = node.heldIter();
+		while(iter.hasNext())
+		{
+			PageId key = iter.next();
+			Page flpage = idtopage.get(key);
+			if(flpage != null && ((HeapPage)flpage).logDirty()) //only if this page hasn't already been written to the log
+			{
+				Database.getLogFile().logWrite(tid, flpage.getBeforeImage(), flpage);
+				Database.getLogFile().force();
+				//here need to set log not dirty
+				((HeapPage)flpage).markLogDirty(false);
+			} 
+		}
+		if(FORCE)
+		{
+			flushPages(tid);
 		}
 	}
 
@@ -414,10 +458,13 @@ public class BufferPool {
 			{
 				// append an update record to the log, with 
 				// a before-image and after-image.
-
-				Database.getLogFile().logWrite(dirtier, flpage.getBeforeImage(), flpage);
-				Database.getLogFile().force();
-
+				if(((HeapPage)flpage).logDirty()) //only if this page hasn't already been written to the log
+				{
+					Database.getLogFile().logWrite(dirtier, flpage.getBeforeImage(), flpage);
+					Database.getLogFile().force();
+					//here need to set log not dirty
+					((HeapPage)flpage).markLogDirty(false);
+				} 
 				dbdel.writePage(flpage);
 				flpage.markDirty(false, null);
 			}
@@ -454,26 +501,49 @@ public class BufferPool {
 				long mintime = Long.MAX_VALUE;
 				boolean found = false;
 				long temptime = idtotime.get(key);
-				if (temptime < mintime && idtopage.get(key).isDirty() == null)
+				if(NOSTEAL) //if in nosteal mode, cannot evict dirty pages
 				{
-					mintime = temptime;
-					minkey = key;
-					found = true;
-				}
-				while (iter.hasNext())
-				{
-					key = iter.next();
-					temptime = idtotime.get(key);
 					if (temptime < mintime && idtopage.get(key).isDirty() == null)
 					{
 						mintime = temptime;
 						minkey = key;
 						found = true;
 					}
+					while (iter.hasNext())
+					{
+						key = iter.next();
+						temptime = idtotime.get(key);
+						if (temptime < mintime && idtopage.get(key).isDirty() == null)
+						{
+							mintime = temptime;
+							minkey = key;
+							found = true;
+						}
+					}
+				}
+				else
+				{
+					if (temptime < mintime)
+					{
+						mintime = temptime;
+						minkey = key;
+						found = true;
+					}
+					while (iter.hasNext())
+					{
+						key = iter.next();
+						temptime = idtotime.get(key);
+						if (temptime < mintime)
+						{
+							mintime = temptime;
+							minkey = key;
+							found = true;
+						}
+					}
 				}
 				if (!found)
 				{
-					throw new DbException("All pages dirty!");
+					throw new DbException("Using No Steal: All pages dirty!");
 				}
 				else{
 					try {
@@ -779,7 +849,7 @@ public class BufferPool {
 		 */
 		private synchronized void createWaitingLockNode(TransactionId tid, PageId pid, Permissions perm) throws TransactionAbortedException
 		{
-			
+
 			if(GRAPH)
 			{
 				HashSet<TransactionId> visited = waitingFor(tid, perm, pid);
@@ -907,7 +977,7 @@ public class BufferPool {
 				req = req.next();
 			}
 		}
-		
+
 	}
 	class LockRequest
 	{
@@ -958,7 +1028,7 @@ public class BufferPool {
 		{
 			this.next = next;
 		}
-		
+
 		public void print()
 		{
 			System.out.print("   " + tid + " " + perm + " " + granted);

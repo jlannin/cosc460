@@ -186,6 +186,8 @@ public class LogFile {
 		raf.writeLong(recordStart);
 		force();
 		activeTids.remove(tid.getId());
+		
+		//logFileRecovery.print();
 	}
 
 	/**
@@ -257,6 +259,7 @@ public class LogFile {
 		writePageData(raf, before);
 		writePageData(raf, after);
 		raf.writeLong(recordStart);
+		//logFileRecovery.print();
 	}
 
 	/**

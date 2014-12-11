@@ -18,6 +18,7 @@ public class HeapPage implements Page {
 	final Tuple tuples[];
 	final int numSlots;
 	private boolean dirty = false;
+	private boolean logDirty = false;
 	private TransactionId dirtTrans = null;
 	
 
@@ -320,7 +321,10 @@ public class HeapPage implements Page {
 	public void markDirty(boolean dirty, TransactionId tid) {
 		this.dirty = dirty;
 		dirtTrans = tid;
-		// if not dirty, do we still record the transaction?
+		if(dirty) //if we have marked a page dirty, then we need to make sure that we update log before flush
+		{
+			markLogDirty(true);
+		}
 	}
 
 	/**
@@ -337,6 +341,16 @@ public class HeapPage implements Page {
 		}
 	}
 
+	public void markLogDirty(boolean dirty)
+	{
+		logDirty = dirty;
+	}
+	
+	public boolean logDirty()
+	{
+		return logDirty;
+	}
+	
 	/**
 	 * Returns the number of empty slots on this page.
 	 */
