@@ -94,7 +94,7 @@ Bonuses!
 
 I have also implemented:
 
-- log truncate in LogFile
+- log truncate in LogFile  (I realized that I had done most of my testing with the (Rollback test) which is why it looked unfamiliar in your office.)
 
 - Waits-for graph based deadlock detection
 In my Lock table, I have a final boolean called "GRAPH" which if set to true will perform the graph based deadlock detection and if set to false will run the regular

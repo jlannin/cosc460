@@ -56,7 +56,7 @@ public class Transaction {
 				Database.getLogFile().logAbort(tid); //does rollback too
 			} else {
 				synchronized (Database.getBufferPool()) {
-					synchronized (this) {
+					synchronized (Database.getLogFile()) {
 						Database.getBufferPool().updateLogBeforeCommit(tid); //updates log and flushes if using force
 					}
 				}

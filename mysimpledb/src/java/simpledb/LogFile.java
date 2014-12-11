@@ -194,7 +194,7 @@ public class LogFile {
 	 * Perform a rollback which should cause an abort to be written
 	 * to log.
 	 *
-	 * @param tid The aborting transaction.
+	 * @param t           id The aborting transaction.
 	 */
 	public void logAbort(TransactionId tid) throws IOException {
 		// must have buffer pool lock before proceeding, since this
@@ -410,9 +410,9 @@ public class LogFile {
 			}
 		}
 
-		//logFileRecovery.print();
+		logFileRecovery.print();
 		logTruncate();
-		//logFileRecovery.print();
+		logFileRecovery.print();
 	}
 
 	/**
