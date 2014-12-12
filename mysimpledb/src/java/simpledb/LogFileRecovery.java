@@ -171,14 +171,14 @@ class LogFileRecovery {
 			}
 			readOnlyLog.readLong();
 		}
-		
+
 		//start the redo phase
 		redoPhase(undoTids);
 		undoPhase(undoTids);
-		
+
 	}
-	
-	
+
+
 	/**
 	 * This does the redo phase of recovery with
 	 * undoTids being updated to contain the list of transactions that
@@ -214,14 +214,22 @@ class LogFileRecovery {
 				undoTids.remove(tid);
 				break;
 			case LogType.UPDATE_RECORD:
+				if(!undoTids.contains(tid))
+				{
+					throw new IOException(tid + " is not active! Where did this log record come from!?!");
+				}
 				Page beforeImg = LogFile.readPageData(readOnlyLog);
 				Page afterImg = LogFile.readPageData(readOnlyLog);  // after image
 				PageId pid = beforeImg.getId();
 				DbFile dbdel = Database.getCatalog().getDatabaseFile(pid.getTableId());
 				dbdel.writePage(afterImg);
-				
+
 				break;
 			case LogType.CLR_RECORD:
+				if(!undoTids.contains(tid))
+				{
+					throw new IOException(tid + " is not active! Where did this log record come from!?!");
+				}
 				afterImg = LogFile.readPageData(readOnlyLog);  // after image
 				pid = afterImg.getId();
 				dbdel = Database.getCatalog().getDatabaseFile(pid.getTableId());
@@ -233,7 +241,7 @@ class LogFileRecovery {
 			long startOfRecord = readOnlyLog.readLong();   // ignored, only useful when going backwards thru log
 		}
 	}
-	
+
 	/**
 	 * This function undoes all of the transactions in undoTids.
 	 * @param undoTids
@@ -263,10 +271,9 @@ class LogFileRecovery {
 			case LogType.BEGIN_RECORD:
 				Database.getLogFile().logAbort(tid);
 				undoTids.remove(tid);
-				
 				break;
 			case LogType.COMMIT_RECORD:
-				throw new IOException("Transaction already comitted!");
+				throw new IOException("Transaction already comitted, should not be undoing!");
 			case LogType.UPDATE_RECORD:
 				Page beforeImg = LogFile.readPageData(readOnlyLog);
 				PageId pid = beforeImg.getId();
@@ -276,7 +283,7 @@ class LogFileRecovery {
 				Database.getLogFile().logCLR(tid, beforeImg);
 				break;
 			case LogType.ABORT_RECORD:
-				throw new IOException("Transaction already aborted!");
+				throw new IOException("Transaction already aborted, should not be undoing!");
 			case LogType.CLR_RECORD:
 				break;
 			default:

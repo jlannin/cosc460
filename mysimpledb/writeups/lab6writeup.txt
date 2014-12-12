@@ -82,9 +82,15 @@ After you complete the lab, please answer the following questions.
 
 11. Describe any missing or incomplete elements of your code.
 
-    All tests are passing for Graph = false, force = true, and nosteal = true as of this commit: 12/10/14
+    All tests are passing for the four scenarios:
 
-    Bonuses attempted after that.
+	-Force, No Steal, Timeout based deadlock detection
+	-No Force, Steal, Timeout based deadlock detection
+	-Force, No Steal, Graph based deadlock detection
+	-No Force, Steal, Graph based deadlock detection
+	
+		as of this commit: 12/11/14
+
 
 12. Roughly how long did you spend working on this lab?
 
@@ -97,6 +103,7 @@ I have also implemented:
 - log truncate in LogFile  (I realized that I had done most of my testing with the (Rollback test) which is why it looked unfamiliar in your office.)
 
 - Waits-for graph based deadlock detection
+
 In my Lock table, I have a final boolean called "GRAPH" which if set to true will perform the graph based deadlock detection and if set to false will run the regular
 timeout based deadlock detection.
 

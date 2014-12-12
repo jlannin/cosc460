@@ -27,8 +27,8 @@ public class BufferPool {
 
 	private static int pageSize = PAGE_SIZE;
 
-	private final boolean FORCE = false;
-	private final boolean NOSTEAL = false;
+	private final boolean FORCE = true;
+	private final boolean NOSTEAL = true;
 
 	/**
 	 * Default number of pages passed to the constructor. This is used by
@@ -567,7 +567,7 @@ public class BufferPool {
 
 		private static final int MAXWAIT = 100; //max amount waiting time if doing timeout based deadlock detection
 		private static final int WAITINCREMENT = 10; //how long should each transaction wait before checking again?
-		private static final boolean GRAPH = true; //True = do graph based deadlock detection, False = timeout based deadlock detection
+		private static final boolean GRAPH = false; //True = do graph based deadlock detection, False = timeout based deadlock detection
 
 		public LockTable()
 		{
