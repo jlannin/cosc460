@@ -27,8 +27,8 @@ public class BufferPool {
 
 	private static int pageSize = PAGE_SIZE;
 
-	private final boolean FORCE = true;
-	private final boolean NOSTEAL = true;
+	private final boolean FORCE = false;
+	private final boolean NOSTEAL = false;
 
 	/**
 	 * Default number of pages passed to the constructor. This is used by
